@@ -1,0 +1,148 @@
+Syntax:
+    Find/Replace:
+    in a scope { ... } we can do X : P : Y
+    This does a find and replace operation on X, looking for regex pattern P and saving all matches in bracets ( ... ) in registers $1, $2, ...
+    Then these values can be used in the string Y
+    X is then completely replaced by Y
+    If no match of P is found in X, go to the next arm after a semicolon
+    example: X : P : Y ; : P' : Y'
+    Now we look for P' in X and replace by Y' if a match is found.
+
+    Functions:
+    Define a function with the def f { LOCAL : P : Y ; ... } syntax
+    ^*$n accesses the n'th register in the global scope, and $0 is always the input X of a scope { X : P : Y}
+    use *def to alter the whole file. Note that $0 is then still the input to the function and ^*$0 is the content of the whole file
+    later in the code you can do f(X)
+    f(X) is just sugar for { X : P : Y ; ... }
+    if f is a global function (*def), then it will alter the whole file and cause the scanning to start at the beginning again.
+    All captured strings are put into registers: $1, $2, ...
+    to access registers of parent scopes, do ^$1, or ^^$1 etc
+
+
+
+/// sum_two_digits:
+/// takes two digits and possible c (for carry), example 35c.
+/// Adds the two digits and adds one if c is present. If the result is bigger than 9, it gives the fitst digit and appends c for carry
+def sum_two_digits {
+    $0
+// with carry
+    : 00c                                               : 1     ;
+    : 01|10c                                            : 2     ;
+    : 02|11|20c                                         : 3     ;
+    : 03|12|21|30c                                      : 4     ;
+    : 04|13|22|31|40c                                   : 5     ;
+    : 05|14|23|32|41|50c                                : 6     ;
+    : 06|15|24|33|42|51|60c                             : 7     ;
+    : 07|16|25|34|43|52|61|70c                          : 8     ;
+    : 08|17|26|35|44|53|62|71|80c                       : 9     ;
+    : 09|18|27|36|45|54|63|72|81|90c                    : 0c    ;
+    : 19|28|37|46|55|64|73|82|91c                       : 1c    ;
+    : 29|38|47|56|65|74|83|92c                          : 2c    ;
+    : 39|48|57|66|75|84|93c                             : 3c    ;
+    : 49|58|67|76|85|94c                                : 4c    ;
+    : 59|68|77|86|95c                                   : 5c    ;
+    : 69|78|87|96c                                      : 6c    ;
+    : 79|88|97c                                         : 7c    ;
+    : 89|98c                                            : 8c    ;
+    : 99c                                               : 9c    ;
+// without carry
+    : 00                                                : 0     ;
+    : 01|10                                             : 1     ;
+    : 02|11|20                                          : 2     ;
+    : 03|12|21|30                                       : 3     ;
+    : 04|13|22|31|40                                    : 4     ;
+    : 05|14|23|32|41|50                                 : 5     ;
+    : 06|15|24|33|42|51|60                              : 6     ;
+    : 07|16|25|34|43|52|61|70                           : 7     ;
+    : 08|17|26|35|44|53|62|71|80                        : 8     ;
+    : 09|18|27|36|45|54|63|72|81|90                     : 9     ;
+    : 19|28|37|46|55|64|73|82|91                        : 0c    ;
+    : 29|38|47|56|65|74|83|92                           : 1c    ;
+    : 39|48|57|66|75|84|93                              : 2c    ;
+    : 49|58|67|76|85|94                                 : 3c    ;
+    : 59|68|77|86|95                                    : 4c    ;
+    : 69|78|87|96                                       : 5c    ;
+    : 79|88|97                                          : 6c    ;
+    : 89|98                                             : 7c    ;
+    : 99                                                : 8c    ;
+// one or both digits missing with carry
+    : (\d?)c                                : sum_two_digits($1 1)   ;   // whitespace after the register call $1 is ignored
+// one or both digits missing without carry
+    : (\d?)                                 : $1    ;
+}
+
+/// add_positive:
+/// takes a sting with format Aa+Bb&c<partial result>
+/// A, B are a string of digits \d*
+/// a, b are the last digit of the summands if they are not empty
+/// & is just a spacer
+/// c is a flag for carry, possible not there
+/// <partial result> is the part computed already
+/// we extract the two last digits a,b
+/// if both are there, we add them with carry, build the new string by adding the result to <partial result> and possibly adding the carry flag
+/// then recurse
+/// if one is empty, we can return the result
+/// if there is still a carry we just replace the empty summand with 1 and recurse
+def add_positive {
+    $0
+    : (\d*)(\d?)\+(\d*)(\d?)&?(c?)r?(\d*)
+//    1:A  2:a    3:B  4:b    5:c?  6:partial result
+    : { ^$2&^$4^$5 : &\d+\b|\d+&\b  : ^$1^$3^$6        ;    \\ case A or B is empty and there is no carry left -> just write the result
+                : &\d+c|\d+&c    : add(1+$1^$3|^$6);        \\ case A or B is empty but there is still a carry -> remove carry but replace the part with 1
+                : : add(^$1+^$3&{ sum_two_digits(^$2^$4^$5) : (\d)(c?) : $2$1 }^$6)
+//                                1:new digit computed^  2:carry?
+    }
+}
+
+def inc {
+    $0
+    :   :   add(1+$0)    ;
+}
+
+
+/// initialize_array:
+/// initializes an array with the given string as name
+/// basically adds the given string to the end of the file, the contents of the array are then followed by this
+/// name of array must not contain & or whitespace characters
+*def initialize_array {
+    : : ^*$0 \n$0 &end \n   ;  // adds $0 to the end of the file. The contents of the array will go between its name and &end as & separated list.
+                                // best practice: When matching against the whole file it is best practice to only search for very specific
+                                // exact matches as to avoid making unwanted alterations
+}
+
+/// push_to_array:
+/// appends the given string as a value to the given array
+/// syntax: Name_of_array&Value
+/// value must not contain & or whitespace characters
+*def push_to_array {
+    ^*$0    :   ([\s,\S]*)({ ^$0 : (.+)&.+ : $1}.*)&end\b\n([\s,\S]*)    :   $1$2 &{ $0 : .+&(.+) : $2}&end\n$3  ;
+//  2: name of the array passed plus its content    1,3: the rest of the file
+// note how the file is split into $1: everything before the given array, $2: the array, $3: everything after. We must repair the whole file
+}
+
+/// remove_first_from_array:
+/// removes a given value from an array, removes the first instance found
+/// syntax Name_of_array&Value
+/// value must not contain & or whitespace characters
+*def remove_first_from_array {
+    ^*$0    :   ([\s,\S]*)({ ^$0 : (.+)&.+ : $1})(.*)&{ ^$0 : .+&(.+) : $1}(.*)&end\b\n([\s,\S]*) : $1 $2 $3 $4 &end\n$5 ;
+//  2: the name of the array, 3,4: everything before and after the value to remove    1,5: the rest of the file
+// note how the whole string of the array is saved into $2-$4 except the value to remove, hence when building the string again with  $2 $3 $4 we are missing that value, i.e. it got removed (plus its leading &)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
