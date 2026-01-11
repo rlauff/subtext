@@ -11,7 +11,8 @@ Syntax:
     Functions:
     Define a function with the def f { LOCAL : P : Y ; ... } syntax
     ^*$n accesses the n'th register in the global scope, and $0 is always the input X of a scope { X : P : Y}
-    use *def to alter the whole file. Note that $0 is then still the input to the function and ^*$0 is the content of the whole file
+    use def* to alter the whole file. Note that $0 is then still the input to the function and ^*$0 is the content of the whole file. The interpreter will start from the first line again after evaluating this
+    use def^ to match against the whole file. Only the part that was matched will be replaced by the result and the interpreter will keep on scanning from where it found the function call
     later in the code you can do f(X)
     f(X) is just sugar for { X : P : Y ; ... }
     if f is a global function (*def), then it will alter the whole file and cause the scanning to start at the beginning again.
@@ -73,24 +74,25 @@ def sum_two_digits {
 
 /// add_positive:
 /// takes a sting with format Aa+Bb&c<partial result>
-/// A, B are a string of digits \d*
+/// A, B are a string of digits \d*, might be empty
 /// a, b are the last digit of the summands if they are not empty
 /// & is just a spacer
-/// c is a flag for carry, possible not there
+/// c is a flag for carry, might not be there
 /// <partial result> is the part computed already
 /// we extract the two last digits a,b
 /// if both are there, we add them with carry, build the new string by adding the result to <partial result> and possibly adding the carry flag
 /// then recurse
-/// if one is empty, we can return the result
+/// if one is empty and there is no carry, we can return the result by appending the other to the partial result
+/// Note that this also works if both are empty
 /// if there is still a carry we just replace the empty summand with 1 and recurse
 def add_positive {
     $0
     : (\d*)(\d?)\+(\d*)(\d?)&?(c?)r?(\d*)
 //    1:A  2:a    3:B  4:b    5:c?  6:partial result
-    : { ^$2&^$4^$5 : &\d+\b|\d+&\b  : ^$1^$3^$6        ;    \\ case A or B is empty and there is no carry left -> just write the result
-                : &\d+c|\d+&c    : add(1+$1^$3|^$6);        \\ case A or B is empty but there is still a carry -> remove carry but replace the part with 1
-                : : add(^$1+^$3&{ sum_two_digits(^$2^$4^$5) : (\d)(c?) : $2$1 }^$6)
-//                                1:new digit computed^  2:carry?
+    : { ^$2&^$4^$5  : \d?+&?[^c]*\b|+\d?&?[^c]*\b   : ^$1^$3^$6        ; \\ case A or B is empty and there is no carry left -> just write the result
+                    : \d?+&?c*\b|+\d?&?c*\b         : add(1+$1^$3|^$6) ; \\ case A or B is empty but there is still a carry -> remove carry, replace empty summand with 1
+                    :                               : add(^$1+^$3&{ sum_two_digits(^$2^$4^$5) : (\d)(c?) : $2$1 }^$6)   ; //    else recurse
+//                                                                            1:new digit computed^  2:carry?
     }
 }
 
@@ -100,11 +102,15 @@ def inc {
 }
 
 
+TODO: Adapt this to use the def^ syntax
+TODO: maybe change initialize_array(Array_name) to write def push_to_Array_name{ ... } etc to the start of the file as well as allocating space at the end of the file.
+This way we can show of the functionality of defining functions by other functions and it might be nice to not pass the arrays name as an argument when pushing to it
+
 /// initialize_array:
 /// initializes an array with the given string as name
 /// basically adds the given string to the end of the file, the contents of the array are then followed by this
 /// name of array must not contain & or whitespace characters
-*def initialize_array {
+def* initialize_array {
     : : ^*$0 \n$0 &end \n   ;  // adds $0 to the end of the file. The contents of the array will go between its name and &end as & separated list.
                                 // best practice: When matching against the whole file it is best practice to only search for very specific
                                 // exact matches as to avoid making unwanted alterations
@@ -114,7 +120,7 @@ def inc {
 /// appends the given string as a value to the given array
 /// syntax: Name_of_array&Value
 /// value must not contain & or whitespace characters
-*def push_to_array {
+def* push_to_array {
     ^*$0    :   ([\s,\S]*)({ ^$0 : (.+)&.+ : $1}.*)&end\b\n([\s,\S]*)    :   $1$2 &{ $0 : .+&(.+) : $2}&end\n$3  ;
 //  2: name of the array passed plus its content    1,3: the rest of the file
 // note how the file is split into $1: everything before the given array, $2: the array, $3: everything after. We must repair the whole file
@@ -124,7 +130,7 @@ def inc {
 /// removes a given value from an array, removes the first instance found
 /// syntax Name_of_array&Value
 /// value must not contain & or whitespace characters
-*def remove_first_from_array {
+def* remove_first_from_array {
     ^*$0    :   ([\s,\S]*)({ ^$0 : (.+)&.+ : $1})(.*)&{ ^$0 : .+&(.+) : $1}(.*)&end\b\n([\s,\S]*) : $1 $2 $3 $4 &end\n$5 ;
 //  2: the name of the array, 3,4: everything before and after the value to remove    1,5: the rest of the file
 // note how the whole string of the array is saved into $2-$4 except the value to remove, hence when building the string again with  $2 $3 $4 we are missing that value, i.e. it got removed (plus its leading &)
