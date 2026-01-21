@@ -1,24 +1,38 @@
-// Syntax:
-//    Find/Replace:
-//    in a scope { ... } we can do X : P : Y
-//    This does a find and replace operation on X, looking for regex pattern P and saving all matches in bracets ( ... ) in registers $1, $2, ...
-//    Then these values can be used in the string Y
-//    X is then completely replaced by Y
-//    If no match of P is found in X, go to the next arm after a semicolon
-//    example: X : P : Y ; : P' : Y'
-//    Now we look for P' in X and replace by Y' if a match is found.
+// a text rewriting system based on scopes
+// the interpreter moves over the file in a loop
+// scopes:
+//    a scope is a string surrounded by {}
+//    a single whitespace after { and a before } is ignored when parsing
+//    the first arm of a scope is of the form I : P : O ;
+//    I is the input
+//    P is the pattern
+//    O is the output
+//    Any whitespace surrounding : is ignored
+//    Any whitespace before ; is ignored
+//    Further arms have the form : P : O ;
+//    We match pattern P against I and put capture groups into registers
+//    If no match is found, we move to the next arm
+//    If no match is found, the default result of a scope is the empty string
+//    If a result is build, the entire scope is replaced by it in place
+//    The interpreter resumes scanning after the result
+//    capture groups are acessed via $1, $2 ...
+//    capture groups from the parent scope are accessed by ^$1 etc, or ^^$1 etc for two levels up and so on
+//    $0 is the full scope as a string
 
-//    Functions:
-//    Define a function with the def f { LOCAL : P : Y ; ... } syntax
-//    ^*$n accesses the n'th register in the global scope, and $0 is always the input X of a scope { X : P : Y}
-//    use def* to match against the whole file. The interpreter will continue scanning after the end of the replaced string. To replace the whole file and hence reset the interpreter, just use [\s,\S]*P[\s,\S]* for any pattern P. This will always match the whole file.
-//    later in the code you can do f(X)
-//    f(X) is just sugar for { X : P : Y ; ... }
-//    if f is a global function (*def), then it will alter the whole file and cause the scanning to start at the beginning again.
-//    All captured strings are put into registers: $1, $2, ...
-//    to access registers of parent scopes, do ^$1, or ^^$1 etc
+// functions:
+//    a function is defined by def followed by a name and then a scope. Normally I = $0
+//    a function is called by its name followed by () containing the input
+//    $0 of a function is whatever was passed to it
+//    a function will replace its entire input by its result
+//    set def f { ^$0 : P : O } to replace the entire scope it was called from, potentially the whole file
+//    the def expression is replaced by the empty string once read
 
-
+special functions:
+    there are build in functions which are always defined
+    print() prints its arg to stdout. Replaced by empty string afterwards
+    get_input() prints its arg to stdout and then waits for user input. Replaced by the user input
+    error() prints its arg to stdout and exits the program
+    exit() exits the program
 
 /// sum_two_digits:
 /// takes two digits and possible c (for carry), example: 35c.
@@ -72,7 +86,7 @@ def sum_two_digits {
 }
 
 /// add_positive:
-/// takes a sting with format Aa+Bb&c<partial result>
+/// takes a sting with format Aa+Bb&c&<partial result>
 /// A, B are a string of digits \d*, might be empty
 /// a, b are the last digit of the summands if they are not empty
 /// & is just a spacer
@@ -86,12 +100,12 @@ def sum_two_digits {
 /// if there is still a carry we just replace the empty summand with 1 and recurse
 def add_positive {
     $0
-    : (\d*)(\d?)\+(\d*)(\d?)&?(c?)r?(\d*)
-//    1:A  2:a    3:B  4:b    5:c?  6:partial result
-    : { ^$2&^$4^$5  : \d?+&?[^c]*\b|+\d?&?[^c]*\b   : ^$1^$3^$6        ; \\ case A or B is empty and there is no carry left -> just write the result
-                    : \d?+&?c*\b|+\d?&?c*\b         : add(1+$1^$3|^$6) ; \\ case A or B is empty but there is still a carry -> remove carry, replace empty summand with 1
-                    :                               : add(^$1+^$3&{ sum_two_digits(^$2^$4^$5) : (\d)(c?) : $2$1 }^$6)   ; //    else recurse
-//                                                                            1:new digit computed^  2:carry?
+    :   (\d*)(\d)\+(\d*)(\d)&?(c?)&?(\d*) // Aa+Bb&c&R, happy path where neither summand is empty
+        :   add_positive($1 +$3 &{ sum_two_digits(^$2 ^$4 ^$5) : (\d)(c?) : $2 &^$6 $1 }) ; // call sum_two_digits(abc) and place result in $1: the digit and $2: potential carry, then build the result string
+    :   (:?\+(\d*)|(\d*)\x)&?(c?)&?(\d*) // one summand is empty
+        :   { ^$2   : c : sum_positive(^$1 +1&&^$3) ;   // there is still a carry, replace the empty summand by 1
+                    :   : $1 $3 }   ;                   // no more carry, can just write the result
+    : : error() ;
     }
 }
 
@@ -99,51 +113,6 @@ def inc {
     $0
     :   :   add(1+$0)    ;
 }
-
-TODO: maybe change initialize_array(Array_name) to write def push_to_Array_name{ ... } etc to the start of the file as well as allocating space at the end of the file.
-This way we can show of the functionality of defining functions by other functions and it might be nice to not pass the arrays name as an argument when pushing to it
-
-/// initialize_array:
-/// initializes an array with the given string as name
-/// basically adds the given string to the end of the file, the contents of the array are then followed by this
-/// name of array must not contain & or whitespace characters
-def* initialize_array {
-    : : ^*$0 \n$0 &end \n   ;   // adds $0 to the end of the file. The contents of the array will go between its name and &end as & separated list.
-                                // best practice: When matching against the whole file it is best practice to only search for very specific
-                                // exact matches as to avoid making unwanted alterations
-}
-
-/// push_to_array:
-/// appends the given string as a value to the given array
-/// syntax: Name_of_array&Value
-/// value must not contain & or whitespace characters
-/// note that def* always takes the whole file as input, so it always starts with :
-def* push_to_array {
-        :   ([\s,\S]*)({ ^$0 : (.+)&.+ : $1}.*)&end\b\n([\s,\S]*)    :   $1$2 &{ $0 : .+&(.+) : $2}&end\n$3  ;
-//  2: name of the array passed plus its content    1,3: the rest of the file
-// note how the file is split into $1: everything before the given array, $2: the array, $3: everything after. We must repair the whole file
-}
-
-/// remove_first_from_array:
-/// removes a given value from an array, removes the first instance found
-/// syntax Name_of_array&Value
-/// value must not contain & or whitespace characters
-def* remove_first_from_array {
-        :   ([\s,\S]*)({ ^$0 : (.+)&.+ : $1})(.*)&{ ^$0 : .+&(.+) : $1}(.*)&end\b\n([\s,\S]*) : $1 $2 $3 $4 &end\n$5 ;
-//  2: the name of the array, 3,4: everything before and after the value to remove    1,5: the rest of the file
-// note how the whole string of the array is saved into $2-$4 except the value to remove, hence when building the string again with  $2 $3 $4 we are missing that value, i.e. it got removed (plus its leading &)
-}
-
-// The print function:
-
-
-
-
-
-
-
-
-
 
 
 
