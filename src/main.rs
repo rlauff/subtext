@@ -5,8 +5,16 @@ use std::fs::File;
 use std::io;
 use std::collections::HashMap;
 
+use log::{info, warn, error};
+use simplelog::*;
+
+use thiserror::Error;
+
 use regex::Regex;
 use ropey::{iter::Chars, Rope, RopeSlice};
+
+mod errors;
+use errors::FindingScopeError;
 
 struct Function {
     name: String,           // the name of the function
@@ -18,12 +26,30 @@ struct Interpreter {
     function_table: HashMap<String, Function> ,     // the function table linking names to the Function object
     registers: Vec<Vec<String>>,                    // the registers
     idx: usize,                                     // the index to theplace the interpreter is reading atm
-    verbose: bool,                                  // whether to print out debug info
-    logging: bool,                                  // whether to log to a log file
 }
 
 
 fn main() {
+    // set up logging 
+    let log = "file"; // Derived from args later
+
+    if log == "file" {
+        // Write to a file
+        WriteLogger::init(
+            LevelFilter::Info,
+            Config::default(),
+            File::create("my_rust_project.log").unwrap(),
+        ).unwrap();
+    } else if log == "terminal" {
+        // Write to stdout/terminal
+        TermLogger::init(
+            LevelFilter::Info,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ).unwrap();
+    } // else no logging
+
     // create the interpreter
     let filepath = std::env::args().nth(1).expect("Usage: pass path to a file");
     let mut i = Interpreter{ 
@@ -35,8 +61,6 @@ fn main() {
         function_table: HashMap::new(),
         registers: vec![vec![]],
         idx: 0,
-        verbose: false,
-        logging: false,
 
      };
 
@@ -60,55 +84,39 @@ struct Scope<'a> {
     patterns: Vec<Regex>,
     outputs: Vec<Regex>,
 }
-enum FindingScopeError {
-    FoundEndingBraceBeforeStartingBrace(String),
-    NoEndingBrace(String),
-    MalformedOrMissingInput(String),
-    MalformedOrMissingPattern(String),
-    MalformedOrMissingOutput(String),
-    ArmsNotSeparatedBySemicolon(String),
-}
 
 /// searches the given rope starting at start_idx to find the next matching {} pair or function call
-fn find_next_scope(i: &Interpreter,r: &Rope, start_idx: usize) -> Result<Option<Scope>, FindingScopeError> {
-    for c in r.chars_at(start_idx) {
+fn find_next_scope<'a>(i: &'a Interpreter,r: &Rope, start_idx: usize) -> Result<Option<Scope<'a>>, FindingScopeError> {
+    info!("Starting to search for next scope, starting at index {}", start_idx);
+    for (start, c) in r.chars_at(start_idx).enumerate() {
         match c {
             '{' => {    // found the start of a scope
                 let mut brace_count = 1;
-                let mut end_idx = start_idx + 1;
-                for c2 in r.chars_at(end_idx) {
+                let mut end = start + start_idx + 1;
+                for c2 in r.chars_at(end) {
                     match c2 {
                         '{' => brace_count += 1,
                         '}' => {
                             brace_count -= 1;
                             if brace_count == 0 {   // found the end of the scope
-                                // build the scope object
+                                info!("Found matching closing brace at index {}", end);
+                                // build the scope object, it is between start + start_idx and end
+                                // extract the input
+                                // the input starts after the opening brace and goes up to the first :
+                                // a single whitespace is ignored after the brace and before the colon
+                                
                                 // TODO
                             }
                         }
                         _ => (),   // continue searching
                         }
-                        end_idx += 1;
+                        end += 1;
                     }
                     // if this for loop ends, we have not found a closing brace matching the opening one
-                    match i.verbose {
-                        true => return Err(FindingScopeError::NoEndingBrace(
-                            format!("No matching closing brace found when searching for a scope in {}", 
-                                r.chars_at(start_idx).as_str()))),
-                        false => return Err(FindingScopeError::NoEndingBrace(
-                            "No matching closing brace found when searching for a scope."
-                            .to_string())),
-                    }
+                    return Err(FindingScopeError::NoEndingBrace)
                 }
             '}' => {    // found a closing brace before an opening one
-                match i.verbose {
-                    true => return Err(FindingScopeError::FoundEndingBraceBeforeStartingBrace(
-                        format!("Encountered a closing brace without a matching opening brace when searching for a scope in {}", 
-                            r.chars_at(start_idx).as_str()))),
-                    false => return Err(FindingScopeError::FoundEndingBraceBeforeStartingBrace(
-                        "Encountered a closing brace without a matching opening brace when searching for a scope."
-                        .to_string())),
-                }
+                return Err(FindingScopeError::FoundEndingBraceBeforeStartingBrace)
             }
             _ => (),    // continue searching
         }
@@ -116,7 +124,8 @@ fn find_next_scope(i: &Interpreter,r: &Rope, start_idx: usize) -> Result<Option<
     Ok(None)    // did not find any opening or closing braces -> there are no more scopes
 }
 
-fn evaluate_scope() {
+fn evaluate_scope(scope: &Scope, interpreter: &mut Interpreter) {
+    info!("Evaluate scope {}", interpreter.state.slice(scope.start_idx..scope.end_idx));
     unimplemented!()
 }
 

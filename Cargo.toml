@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+log = "0.4.29"
 regex = "1.12.2"
 ropey = "1.6.1"
+simplelog = "0.12.2"
+thiserror = "2.0.18"
