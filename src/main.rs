@@ -101,11 +101,7 @@ fn find_next_scope<'a>(i: &'a Interpreter,r: &Rope, start_idx: usize) -> Result<
                             if brace_count == 0 {   // found the end of the scope
                                 info!("Found matching closing brace at index {}", end);
                                 // build the scope object, it is between start + start_idx and end
-                                // extract the input
-                                // the input starts after the opening brace and goes up to the first :
-                                // a single whitespace is ignored after the brace and before the colon
-                                
-                                // TODO
+                                return Ok(Some(build_scope_from_raw_string(i, &r.slice(start + start_idx..end))));
                             }
                         }
                         _ => (),   // continue searching
@@ -122,6 +118,14 @@ fn find_next_scope<'a>(i: &'a Interpreter,r: &Rope, start_idx: usize) -> Result<
         }
     }
     Ok(None)    // did not find any opening or closing braces -> there are no more scopes
+}
+
+fn build_scope_from_raw_string<'a>(i: &'a Interpreter, scope_raw: &RopeSlice) -> Scope<'a> {
+    // first find the input. It is between the opening brace and the first colon
+    // a single whitespace after the brace and before the colon may be ignored if present
+    let mut start_input = if scope_raw.chars_at(1) == ' ' {1} else {0};
+
+    unimplemented!()
 }
 
 fn evaluate_scope(scope: &Scope, interpreter: &mut Interpreter) {
