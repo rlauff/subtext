@@ -27,10 +27,8 @@ enum ParserState {
     InRegisterCallParseIndex,
     // we have encountered a 'def' and a whitespace after it, now we expect a function name
     ParsingDefFunctionName,
-    // if we just found a token we want to add it to the arena and reset the state and buffer etc of the parser
-    JustFoundToken,
     // if we find a '/', we might be starting a comment
-    PotentialCommentStart,
+    PotCommentStart,
     // we are in a comment, ignore everything until the end of the line
     InComment,
 }

@@ -2,7 +2,7 @@ use thiserror::Error;
 
 
 #[derive(Debug, Error)]
-pub enum ParseError {
+pub enum FindingScopeError {
     #[error("Found ending brace before starting brace")]
     FoundEndingBraceBeforeStartingBrace,
     #[error("No matching ending brace found")]
@@ -25,5 +25,9 @@ enum LinkedTokensError {
 }
 
 enum ParserError {
-
+    InvalidFunctionNameCharacter(char),
+    InvalidRegisterIndexCharacter(char),
+    IndexMissingInRegisterCall,
+    ExpectedScopeStartAfterFunctionDefinition,
+    InputEndedUnexpectedly,
 }

@@ -3,6 +3,7 @@ use std::f32::consts::E;
 use thiserror::Error;
 
 use crate::errors::LinkedTokensError;
+use crate::errors::ParserError;
 use crate::parser::*;
 
 
@@ -32,7 +33,23 @@ struct LinkedTokens {
     arena: Vec<TokenNode>,
 }
 
-
+macro_rules! push_token {
+    ($t:expr) => {
+        {
+            i += 1;
+            // linking the previous token to the new one
+            arena[i - 1].next = Some(i);
+            
+            arena.push(TokenNode {
+                token: $t,
+                next: None,
+                prev: Some(i - 1),
+            });
+            parser.reset_buffers();
+            parser.state = ParseState::Normal;
+        }
+    };
+}
 
 impl LinkedTokens {
     // parses a string into linked tokens
@@ -41,12 +58,11 @@ impl LinkedTokens {
         let mut arena = vec![
             TokenNode {
                 token: Token::RootNodeToken,
-                next: Some(1),
+                next: None,
                 prev: None,
             }
         ];
         let mut parser = Parser::new();
-        let mut token = Token::RootNodeToken;
         let chars = s.chars();
         let mut c = ' ';                // the current charcter being parsed
         let mut i = 0;                 // the current index in the arena
@@ -63,35 +79,30 @@ impl LinkedTokens {
             }
             get_new_char = true; // by default we get a new char in the next iteration
             match parser.state {
-                Normal => {
+                ParseState::Normal => {
                     match c {
                         '{' => {
                             if parser.buffer.len() > 0 { // this scope is a function call
                                 // we have a function name before the scope start
                                 let func_name: String = parser.buffer.iter().collect();
-                                token = Token::FunctionStart(func_name);
-                                parser.state = ParseState::JustFoundToken;
+                                push_token!(Token::FunctionStart(func_name));
                             } else {    // this scope is stand alone
-                                token = Token::ScopeStart;
-                                parser.state = ParseState::JustFoundToken;
+                                push_token!(Token::ScopeStart);
                             }
                         },
                         '}' => {
-                            token = Token::ScopeEnd;
-                            parser.state = ParseState::JustFoundToken;
+                            push_token!(Token::ScopeEnd);
                         },
                         ':' => {
-                            token = Token::Colon;
-                            parser.state = ParseState::JustFoundToken;
+                            push_token!(Token::Colon);
                         },
                         ';' => {
-                            token = Token::ArmEnd;
-                            parser.state = ParseState::JustFoundToken;
+                            push_token!(Token::ArmEnd);
                         },
                         '^' => {
                             // found a potential register call
                             parser.state = ParseState::PotRegisterCall;
-                            parser.depth = 1;   // we found one '^' so depth is at least 1
+                            parser.depth = 1;   // we found one '^' so init depth as 1
                         },
                         '$' => {
                             // found a register call start
@@ -108,12 +119,21 @@ impl LinkedTokens {
                         },
                         '/' => {
                             // found a potential comment start
-                            parser.state = ParseState::PotentialCommentStart;
+                            parser.state = ParseState::PotCommentStart;
                         },
-
+                        'a'..='z' | 'A'..='Z' | '0'..='9' => {
+                            // valid function name char, add to buffer
+                            parser.buffer.push(c);
+                        },
+                        '\n' | '\t' | '\r' => {
+                            // ignore whitespace characters
+                        },
+                        _ => {
+                            push_token!(Token::Char(c));
+                        }
                     }
                 },
-                PotRegisterCall => {
+                ParseState::PotRegisterCall => {
                     match c {
                         '^' => {
                             parser.depth += 1;   // increase the depth of the register call
@@ -129,7 +149,7 @@ impl LinkedTokens {
                         }
                     }
                 },
-                InRegisterCallParseIndex => {
+                ParseState::InRegisterCallParseIndex => {
                     match c {
                         '0'..='9' => {
                             parser.index.push(c);
@@ -141,7 +161,7 @@ impl LinkedTokens {
                             }
                             let index_str: String = parser.index.iter().collect();
                             let index: usize = index_str.parse().unwrap(); // safe to unwrap, we only have digits in the string
-                            token = Token::RegisterCall(parser.depth, index);
+                            push_token!(Token::RegisterCall(parser.depth, index));
                             parser.state = ParseState::JustFoundToken;
                         },
                         _ => {
@@ -149,24 +169,18 @@ impl LinkedTokens {
                         }
                     }
                 },
-                JustFoundToken => {
-                    i += 1;
-                    arena.push(             // push the new TokenNode to the arena
-                        TokenNode {
-                            token: token,
-                            next: Some(i+1),
-                            prev: Some(i-1),
-                        });
-                    parser.reset_buffers(); // reset the parser buffers
-                    parser.state = ParseState::Normal; // go back to normal state
-                },
-                ParsingDefFunctionName => {
+                ParseState::ParsingDefFunctionName => {
                     match c {
                         ' ' => {
                             // end of function name
                             let func_name: String = parser.buffer.iter().collect();
-                            token = Token::DefStart(func_name);
+                            push_token!(Token::DefStart(func_name));
                             parser.state = ParseState::JustFoundToken;
+                            // expect a scope start next, which should not be added as a token
+                            let pot_next_char = chars.next();
+                            if pot_next_char != Some('{') {
+                                return Err(ParseError::ExpectedScopeStartAfterFunctionDefinition);
+                            }
                         },
                         'a'..='z' | 'A'..='Z' | '0'..='9' => {
                             // valid function name char, add to buffer
@@ -177,7 +191,7 @@ impl LinkedTokens {
                         },
                     }
                 },
-                PotentialCommentStart => {
+                ParseState::PotCommentStart => {
                     match c {
                         '/' => {
                             // confirmed comment start
@@ -191,7 +205,7 @@ impl LinkedTokens {
                         },
                     }
                 },
-                InComment => {
+                ParseState::InComment => {
                     match c {
                         '\n' => {
                             parser.state = ParseState::Normal;
@@ -201,8 +215,12 @@ impl LinkedTokens {
                 },
             }
         }
-        // remove the next link of the last token node
-        arena.last_mut().unwrap().next = None;
+        match parser.state {
+            ParseState::Normal | ParseState::PotCommentStart | ParseState::PotRegisterCall => (), // all good
+            _ => {
+                return Err(ParseError::InputEndedUnexpectedly);
+            }
+        };
 
         Ok(LinkedTokens { arena })
     }
@@ -210,35 +228,59 @@ impl LinkedTokens {
     // inserts tokens after the token at the given index in the arena of self
     // index = 0 inserts after the root token node, i.e before the first actual token
     fn insert_after(&mut self, index: usize, tokens: Vec<Token>) -> Result<(), LinkedTokensError> {
-        let len_arena = self.arena.len();
+        // check boundaries
         if index >= self.arena.len() {
             return Err(LinkedTokensError::InsertionInvalidIndex);
         }
         if tokens.is_empty() {
             return Err(LinkedTokensError::InsertionEmptyTokens);
         }
+
+        let len_arena = self.arena.len();
         let len_tokens = tokens.len();
 
-        // add the new TokenNodes to the end of the arena. They are already constructed with the correct links
-        self.arena.append(
-            tokens
-                .into_iter()
-                .enumerate()
-                .map(|i, x| TokenNode { 
-                    token: x,
-                    next: if i == len_tokens - 1 { token.next } else { Some(len_arena + i + 1) },
-                    prev: if i == 0 { Some(index) } else { Some(len_arena + i - 1) },
-                }));
+        // retrieve the index of the token that comes after the insertion point currently
+        // we must save this as a usize value before mutating the arena to avoid borrowing conflicts
+        let old_next_index = self.arena[index].next;
 
-        // adapt the next link of the token after which we inserted
-        let mut token = &self.arena[index];
-        token.next = Some(len_arena);
+        // iterate over the new tokens and add them to the arena
+        for (i, t) in tokens.into_iter().enumerate() {
+            // calculate the next link:
+            // if it is the last new token, it points to the old_next_index
+            // otherwise it points to the next new token (which will be at len_arena + i + 1)
+            let next_link = if i == len_tokens - 1 {
+                old_next_index
+            } else {
+                Some(len_arena + i + 1)
+            };
 
-        // adapt the prev link of the token after the inserted tokens, if it exists
-        if let Some(next_index) = token.next {
-            let mut next_token = &self.arena[next_index];
-            next_token.prev = Some(len_arena + len_tokens - 1);
+            // calculate the prev link:
+            // if it is the first new token, it points back to the insertion index
+            // otherwise it points to the previous new token (which is at len_arena + i - 1)
+            let prev_link = if i == 0 {
+                Some(index)
+            } else {
+                Some(len_arena + i - 1)
+            };
+
+            // push the constructed node to the arena
+            self.arena.push(TokenNode {
+                token: t,
+                next: next_link,
+                prev: prev_link,
+            });
         }
+
+        // update the next link of the token after which we inserted to point to the first new token
+        self.arena[index].next = Some(len_arena);
+
+        // update the prev link of the token that used to follow the insertion point
+        // it must now point to the last of the newly inserted tokens
+        if let Some(next_index) = old_next_index {
+            // we access the arena directly by index here
+            self.arena[next_index].prev = Some(len_arena + len_tokens - 1);
+        }
+
         Ok(())
     }
 
@@ -278,8 +320,8 @@ impl LinkedTokens {
         if start_index >= len_arena || end_index >= len_arena {
             return Err(LinkedTokensError::RemovalInvalidIndex);
         }
-        arena[start_index].next = end_index;
-        arena[end_index].prev = start_index;
+        self.arena[start_index].next = Some(end_index);
+        self.arena[end_index].prev = Some(start_index);
         Ok(())
     }
 
