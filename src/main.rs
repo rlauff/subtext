@@ -11,23 +11,13 @@ use simplelog::*;
 use thiserror::Error;
 
 use regex::Regex;
-use ropey::{iter::Chars, Rope, RopeSlice};
 
 mod errors;
 use errors::FindingScopeError;
 
-struct Function {
-    name: String,           // the name of the function
-    patterns: Vec<Regex>,   // the patterns of the arms to match agains, note that the regexes are precompiled
-    outputs: Vec<Regex>,    // the outputs of the arms
-}
-struct Interpreter {
-    state: Rope,
-    function_table: HashMap<String, Function> ,     // the function table linking names to the Function object
-    registers: Vec<Vec<String>>,                    // the registers
-    idx: usize,                                     // the index to theplace the interpreter is reading atm
-}
+mod linked_tokens;
 
+mod parser;
 
 fn main() {
     // set up logging 
@@ -50,89 +40,21 @@ fn main() {
         ).unwrap();
     } // else no logging
 
-    // create the interpreter
-    let filepath = std::env::args().nth(1).expect("Usage: pass path to a file");
-    let mut i = Interpreter{ 
-        state: Rope::from_reader(
-                io::BufReader::new(
-                File::open(&filepath)
-                .unwrap()))
-                .expect("Cannot read file: either it doesn't exist, file permissions don't allow reading, or is not utf8 text."),
-        function_table: HashMap::new(),
-        registers: vec![vec![]],
-        idx: 0,
-
-     };
-
-    let mut change_made = false;
-    loop {
-        change_made = false;
-        // parse to find the next scope
-
-        // evaluate it
-
-        // repeat
-        if !change_made { break }
-    }
-    println!("\n\nFinal state:\n{}", i.state);
+    let s = "def add_positive {
+    (\\d*)(\\d)\\+(\\d*)(\\d)&?(c?)&?(\\d*) // Aa+Bb&c&R, happy path where neither summand is empty
+    :   add_positive{$1 +$3 &{ sum_two_digits{^$2 ^$4 ^$5 } : (\\d)(c?) : $2 &^$6 $1 }} ; // call sum_two_digits(abc) and place result in $1: the digit and $2: potential carry, then build the result string
+    :   (:?\\+(\\d*)|(\\d*)\\x)&?(c?)&?(\\d*) // one summand is empty
+    :   { ^$2   : c : add_positive{^$1 +1&&^$3 } ;   // there is still a carry, replace the empty summand by 1
+    :   : $1 $3 }   ;                   // no more carry, can just write the result
+    // if none of the arms match we have an error, we want the scope insider the input of the error to be parsed, so we cannot write error(...) directly
+    // this is why we are using the dirty approach of letting the error keyword be generated itself by a scope { : : error}
+    // this might be changed to a more elegant
+    : : { : : error}(Something went wrong when calling add_positive on input $0 ) ;
 }
-
-struct Scope<'a> {
-    start_idx: usize,
-    end_idx: usize,
-    input: RopeSlice<'a>,
-    patterns: Vec<Regex>,
-    outputs: Vec<Regex>,
+";
+    let lt = linked_tokens::LinkedTokens::from_string(s).unwrap();
+    println!("{}", lt);
+    println!("{}", lt.to_raw_string());
 }
-
-/// searches the given rope starting at start_idx to find the next matching {} pair or function call
-fn find_next_scope<'a>(i: &'a Interpreter,r: &Rope, start_idx: usize) -> Result<Option<Scope<'a>>, FindingScopeError> {
-    info!("Starting to search for next scope, starting at index {}", start_idx);
-    for (start, c) in r.chars_at(start_idx).enumerate() {
-        match c {
-            '{' => {    // found the start of a scope
-                let mut brace_count = 1;
-                let mut end = start + start_idx + 1;
-                for c2 in r.chars_at(end) {
-                    match c2 {
-                        '{' => brace_count += 1,
-                        '}' => {
-                            brace_count -= 1;
-                            if brace_count == 0 {   // found the end of the scope
-                                info!("Found matching closing brace at index {}", end);
-                                // build the scope object, it is between start + start_idx and end
-                                return Ok(Some(build_scope_from_raw_string(i, &r.slice(start + start_idx..end))));
-                            }
-                        }
-                        _ => (),   // continue searching
-                        }
-                        end += 1;
-                    }
-                    // if this for loop ends, we have not found a closing brace matching the opening one
-                    return Err(FindingScopeError::NoEndingBrace)
-                }
-            '}' => {    // found a closing brace before an opening one
-                return Err(FindingScopeError::FoundEndingBraceBeforeStartingBrace)
-            }
-            _ => (),    // continue searching
-        }
-    }
-    Ok(None)    // did not find any opening or closing braces -> there are no more scopes
-}
-
-fn build_scope_from_raw_string<'a>(i: &'a Interpreter, scope_raw: &RopeSlice) -> Scope<'a> {
-    // first find the input. It is between the opening brace and the first colon
-    // a single whitespace after the brace and before the colon may be ignored if present
-    let mut start_input = if scope_raw.chars_at(1) == ' ' {1} else {0};
-
-    unimplemented!()
-}
-
-fn evaluate_scope(scope: &Scope, interpreter: &mut Interpreter) {
-    info!("Evaluate scope {}", interpreter.state.slice(scope.start_idx..scope.end_idx));
-    unimplemented!()
-}
-
-
 
 

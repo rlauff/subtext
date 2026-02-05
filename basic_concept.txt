@@ -106,7 +106,6 @@ def add_positive {
         :   { ^$2   : c : sum_positive(^$1 +1&&^$3) ;   // there is still a carry, replace the empty summand by 1
                     :   : $1 $3 }   ;                   // no more carry, can just write the result
     : : error() ;
-    }
 }
 
 def inc {

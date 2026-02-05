@@ -1,13 +1,14 @@
 use crate::linked_tokens::*;
 
-struct Parser {
-    state: ParserState,
-    buffer: Vec<char>,      // the buffer holding a potential function name or def statement etc
-    depth: usize,           // the current depth of ra potential register call
-    index: Vec<char>,       // the index chars of a register call
+pub struct Parser {
+    pub state: ParseState,
+    pub buffer: Vec<char>,      // the buffer holding a potential function name or def statement etc
+    pub depth: usize,           // the current depth of ra potential register call
+    pub index: Vec<char>,       // the index chars of a register call
+    pub global: bool,           // wether the defined function is marked as global
 }
 
-enum ParserState {
+pub enum ParseState {
     // whenever we see a non-whitespace character, there might be a function call
     // if we are in a string that looks like 'def', we might be defining a function
     // keep what came since the last whitespace in a buffer
@@ -28,24 +29,27 @@ enum ParserState {
     // we have encountered a 'def' and a whitespace after it, now we expect a function name
     ParsingDefFunctionName,
     // if we find a '/', we might be starting a comment
-    PotCommentStart,
+    PotComment,
     // we are in a comment, ignore everything until the end of the line
     InComment,
+    Escape,
 }
 
 impl Parser {
-    fn new() -> self {
+    pub fn new() -> Self {
         Parser {
-            state: Normal,
+            state: ParseState::Normal,
             buffer: Vec::new(),
             depth: 0,
             index: Vec::new(),
+            global: false,
         }
     }
 
-    fn reset_buffers(&mut self) {
+    pub fn reset_buffers(&mut self) {
         self.buffer.clear();
         self.depth = 0;
         self.index.clear();
+        self.global = false;
     }
 }
