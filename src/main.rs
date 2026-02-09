@@ -19,6 +19,8 @@ mod linked_tokens;
 
 mod parser;
 
+mod eval;
+
 fn main() {
     // set up logging 
     let log = "file"; // Derived from args later

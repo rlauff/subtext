@@ -4,8 +4,8 @@ use crate::errors::LinkedTokensError;
 use crate::errors::ParseError;
 use crate::parser::*;
 
-#[derive(Clone, Debug)]
-enum Token {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Token {
     Char(char),
     ScopeStart,
     ScopeEnd,
@@ -18,13 +18,14 @@ enum Token {
     RootNodeToken,              // a placeholder token for the root node
     GetInput(String),           // get input from the user, with a prompt
     Error(String),              // error token with message
+    Print(String),              // print token with message
     GenericWhitespace           // A generic Whitespace token to terminate register calls etc
 }
 
 #[derive(Clone, Debug)]
-struct TokenNode {
-    token: Token,
-    next: Option<usize>,    // index of the next token in the arena
+pub struct TokenNode {
+    pub token: Token,
+    pub next: Option<usize>,    // index of the next token in the arena
 }
 // the linked tokes struct
 // the first token node is always the one at index 0 in the arena
@@ -32,7 +33,7 @@ struct TokenNode {
 // hence, if we want to insert at the very start, we insert after index 0
 #[derive(Clone)]
 pub struct LinkedTokens {
-    arena: Vec<TokenNode>,
+    pub arena: Vec<TokenNode>,
 }
 
 impl LinkedTokens {
@@ -67,9 +68,9 @@ impl LinkedTokens {
                             if parser.buffer.len() > 0 { // this scope is a function call
                                 // we have a function name before the scope start
                                 let func_name: String = parser.buffer.iter().collect();
-                                push_token_at_end(&mut arena, Token::FunctionCall(func_name));
+                                push_while_parsing(&mut arena, Token::FunctionCall(func_name));
                             } else {    // this scope is stand alone
-                                push_token_at_end(&mut arena, Token::ScopeStart);
+                                push_while_parsing(&mut arena, Token::ScopeStart);
                             }
                             // update the parser state and buffers
                             parser.reset_buffers();
@@ -78,21 +79,21 @@ impl LinkedTokens {
                         },
                         '}' => {
                             empty_buffer_at_end(&mut arena, &parser.buffer);
-                            push_token_at_end(&mut arena, Token::ScopeEnd);
+                            push_while_parsing(&mut arena, Token::ScopeEnd);
                             // update the parser state and buffers
                             parser.reset_buffers();
                             parser.state = ParseState::Normal;
                         },
                         ':' => {
                             empty_buffer_at_end(&mut arena, &parser.buffer);
-                            push_token_at_end(&mut arena, Token::Colon);
+                            push_while_parsing(&mut arena, Token::Colon);
                             // update the parser state and buffers
                             parser.reset_buffers();
                             parser.state = ParseState::Normal;
                         },
                         ';' => {
                             empty_buffer_at_end(&mut arena, &parser.buffer);
-                            push_token_at_end(&mut arena, Token::NewArm);
+                            push_while_parsing(&mut arena, Token::NewArm);
                             // update the parser state and buffers
                             parser.reset_buffers();
                             parser.state = ParseState::Normal;
@@ -119,7 +120,7 @@ impl LinkedTokens {
                                 parser.global = true;
                             } else {
                                 empty_buffer_at_end(&mut arena, &parser.buffer);
-                                push_token_at_end(&mut arena, Token::GenericWhitespace);
+                                push_while_parsing(&mut arena, Token::GenericWhitespace);
                             }
                             parser.reset_buffers();
                         },
@@ -154,12 +155,12 @@ impl LinkedTokens {
                                     }
                                 }
                                 let prompt: String = prompt_buffer.iter().collect();
-                                push_token_at_end(&mut arena, Token::GetInput(prompt));
-                            } else if parser.buffer == vec!['e', 'r', 'r', 'o', 'r'] {
-                                // we found an error function call start
+                                push_while_parsing(&mut arena, Token::GetInput(prompt));
+                            } else if parser.buffer == vec!['p', 'r', 'i', 'n', 't'] {
+                                // we found a print function call start
                                 parser.reset_buffers();
                                 parser.state = ParseState::Normal;
-                                // now parse the error message string until the closing ')'
+                                // now parse the message string until the closing ')'
                                 let mut message_buffer: Vec<char> = Vec::new();
                                 loop {
                                     if let Some(next_char) = chars.next() {
@@ -173,7 +174,26 @@ impl LinkedTokens {
                                     }
                                 }
                                 let message: String = message_buffer.iter().collect();
-                                push_token_at_end(&mut arena, Token::Error(message));
+                                push_while_parsing(&mut arena, Token::Print(message));
+                            } else if parser.buffer == vec!['e', 'r', 'r', 'o', 'r'] {
+                                // we found a error function call start
+                                parser.reset_buffers();
+                                parser.state = ParseState::Normal;
+                                // now parse the message string until the closing ')'
+                                let mut message_buffer: Vec<char> = Vec::new();
+                                loop {
+                                    if let Some(next_char) = chars.next() {
+                                        if next_char == ')' {
+                                            break; // end of message string
+                                        } else {
+                                            message_buffer.push(next_char);
+                                        }
+                                    } else {
+                                        return Err(ParseError::InputEndedUnexpectedly);
+                                    }
+                                }
+                                let message: String = message_buffer.iter().collect();
+                                push_while_parsing(&mut arena, Token::Error(message));
                             } else {
                                 // just a normal char
                                 parser.buffer.push(c);
@@ -181,7 +201,7 @@ impl LinkedTokens {
                         }
                         _ => {
                             empty_buffer_at_end(&mut arena, &parser.buffer);
-                            push_token_at_end(&mut arena, Token::Char(c));
+                            push_while_parsing(&mut arena, Token::Char(c));
                             // update the parser state and buffers
                             parser.state = ParseState::Normal;
                             parser.reset_buffers(); // reset buffer, because these symbols cannot be part of a function name etc
@@ -220,7 +240,7 @@ impl LinkedTokens {
                             }
                             let index_str: String = parser.index.iter().collect();
                             let index: usize = index_str.parse().unwrap(); // safe to unwrap, we only have digits in the string
-                            push_token_at_end(&mut arena, Token::RegisterCall(parser.depth, index));
+                            push_while_parsing(&mut arena, Token::RegisterCall(parser.depth, index));
                             // update the parser state and buffers
                             parser.reset_buffers();
                             parser.state = ParseState::Normal;
@@ -236,9 +256,9 @@ impl LinkedTokens {
                             // end of function name
                             let func_name: String = parser.buffer.iter().collect();
                             if !parser.global {
-                                push_token_at_end(&mut arena, Token::DefStart(func_name));
+                                push_while_parsing(&mut arena, Token::DefStart(func_name));
                             } else {
-                                push_token_at_end(&mut arena, Token::DefGlobalStart(func_name));
+                                push_while_parsing(&mut arena, Token::DefGlobalStart(func_name));
                             }
                             // update the parser state and buffers
                             parser.reset_buffers();
@@ -267,8 +287,8 @@ impl LinkedTokens {
                         }
                         ch => {
                             // not a comment, but / was just a normal char
-                            push_token_at_end(&mut arena, Token::Char('/'));
-                            push_token_at_end(&mut arena, Token::Char(ch));
+                            push_while_parsing(&mut arena, Token::Char('/'));
+                            push_while_parsing(&mut arena, Token::Char(ch));
                             parser.state = ParseState::Normal;
                         },
                     }
@@ -287,7 +307,7 @@ impl LinkedTokens {
                 },
                 ParseState::Escape => {
                     // push the next char as a Char token, regardless of what it is
-                    push_token_at_end(&mut arena, Token::Char(c));
+                    push_while_parsing(&mut arena, Token::Char(c));
                     parser.state = ParseState::Normal;
                 }
             }
@@ -300,58 +320,48 @@ impl LinkedTokens {
             }
         };
 
-        let mut lt = LinkedTokens { arena: arena.clone() }; // Todo remove the clone somehow, it should really not be needed
-        // we now remove the whitespace after scope starts (including function calls etc), after scope ends and before and after Colons
-        let mut start: usize = 0;
-        let mut n: usize = 0;
-        let mut after_scope_start = false;
-        for (i, token_node) in arena.iter().enumerate() {
-            match token_node.token {
-                Token::GenericWhitespace => {
-                    n += 1;
-                },
-                Token::Colon | Token::NewArm => {
-                    lt.remove_range(start, n); // remove all preceeding whitespace
-                    after_scope_start = true;   // set so that we remove all comming whitespace once finding a non-whitespace token
-                    start = i;
-                    n = 0;
-                },
-                Token::ScopeEnd => {
-                    if after_scope_start {
-                        lt.remove_range(start, n); // remove all preceeding whitespace
-                        after_scope_start = false;
+        
+
+        Ok(LinkedTokens { arena })
+    }
+
+    // after replacing a part, we might have created a new register or function call
+    // this function reparses the linked tokens to update the token types accordingly
+    fn reparse(&mut self) -> Result<(), ParseError> {
+        let mut parser = Parser::new();
+        let mut current_node_index = 0; // start at the root node
+        current_node_index = self.arena[current_node_index].next.unwrap(); // move to the first actual token
+        loop {
+            if let Some(next_index) = self.arena[current_node_index].next {
+                current_node_index = next_index;
+            } else {
+                break; // end of the list
+            }
+            match self.arena[current_node_index].token {
+                Token::Char(c) => {
+                    match c {
+                        'a'..='z' | 'A'..='Z' | '0'..='9' | '_' => {
+                            // valid function name char, add to buffer
+                            parser.buffer.push(c);
+                        },
+                        '(' => {
+                            // the only thing that can happen is that we build up a function call from multiple parts
+                            // we want to allow this to make some quirky things possible, like replacing a part of a function name and still have it work as a function call, as long as the final result is a valid function call
+                            // however, this could be removed as a functionality without affecting the capabilities of the language in a meaningful way.
+                            // TODO: actually implement this or decide to leave it out
+                        }
+                        _ => {
+                            // any other character would end a potential function name etc.
+                            // note that whitespace characters are tokenized and stay that way
+                            // same with register calls, they are tokenized as separate tokens and cannot be "completed" by adding more chars, so we do not need to worry about them here
+                            // therefore, this cannot be a function call or register call
+                        }
                     }
-                    lt.remove_range(start, n); // remove all preceeding whitespace
-                    after_scope_start = false;
-                    start = i;
-                    n = 0;
                 },
-                Token::ScopeStart | Token::DefGlobalStart(_) | Token::DefStart(_) | Token::FunctionCall(_) => {
-                    if after_scope_start {
-                        lt.remove_range(start, n); // remove all preceeding whitespace
-                        after_scope_start = false;
-                    }
-                    after_scope_start = true;   // set so that we remove all comming whitespace once finding a non-whitespace token
-                    start = i;
-                    n = 0;
-                },
-                _ => {
-                    if after_scope_start {
-                        lt.remove_range(start, n); // remove all preceeding whitespace
-                        after_scope_start = false;
-                    }
-                    start = i;
-                    n = 0;
-                }
+                _ => {}
             }
         }
-        if after_scope_start {
-            lt.remove_range(start, n); // remove all preceeding whitespace
-            after_scope_start = false;
-        }
-        println!("TODO Fix whitespace removal");
-
-        Ok(lt)
+        Ok(())
     }
 
     // inserts tokens after the token at the given index in the arena of self
@@ -513,6 +523,11 @@ impl LinkedTokens {
                     result.push_str(message);
                     result.push(')');
                 },
+                Token::Print(message) => {
+                    result.push_str("print(");
+                    result.push_str(message);
+                    result.push(')');
+                },
                 Token::GenericWhitespace => result.push(' '),
                 Token::RootNodeToken => (), // do nothing for root node
             }
@@ -526,11 +541,19 @@ impl LinkedTokens {
 // push a single new token to the arena, linking it to the current last token
 // WARNING: this only wokrs correctly if the last token in the arena is actually the last token in the linked list
 // otherwise behavior is undefined
-fn push_token_at_end(arena: &mut Vec<TokenNode>, token: Token) {
+// skip if the token is a GenericWhitespace and the last pushed token was also a whitespace, to avoid multiple consecutive whitespace tokens
+fn push_while_parsing(arena: &mut Vec<TokenNode>, token: Token) {
+    if token == Token::GenericWhitespace {
+        if let Some(last_token_node) = arena.last() {
+            if last_token_node.token == Token::GenericWhitespace {
+                return; // skip pushing another whitespace token
+            }
+        }
+    }
     let new_index = arena.len();
     // link the current last token to the new token
     arena.last_mut().unwrap().next = Some(new_index);
-    // push the new token to the arena, linking it back to the current last token
+    // push the new token to the arena,
     arena.push(TokenNode {
         token,
         next: None,
@@ -542,10 +565,12 @@ fn push_token_at_end(arena: &mut Vec<TokenNode>, token: Token) {
 // otherwise behavior is undefined
 fn empty_buffer_at_end(arena: &mut Vec<TokenNode>, buffer: &Vec<char>) {
     for c in buffer {
-        push_token_at_end(arena, Token::Char(*c));
+        push_while_parsing(arena, Token::Char(*c));
     }
 }
 
+
+// Display implementations by Gemini 3. Non-criticals
 use std::fmt;
 
 // implementation of the Display trait for Token
@@ -558,15 +583,9 @@ impl fmt::Display for Token {
             Token::ScopeEnd => write!(f, "}}"),
             Token::Colon => write!(f, ":"),
             Token::NewArm => write!(f, ";"),
-            Token::FunctionCall(name) => {
-                write!(f, "{}{{", name)
-            },
-            Token::DefStart(name) => {
-                write!(f, "def {} {{", name)
-            },
-            Token::DefGlobalStart(name) => {
-                write!(f, "*def {} {{", name)
-            }
+            Token::FunctionCall(name) => write!(f, "{}{{", name),
+            Token::DefStart(name) => write!(f, "def {} {{", name),
+            Token::DefGlobalStart(name) => write!(f, "*def {} {{", name),
             Token::RegisterCall(depth, index) => {
                 // write the depth markers
                 for _ in 0..*depth {
@@ -575,12 +594,9 @@ impl fmt::Display for Token {
                 // write the index marker and value
                 write!(f, "${}", index)
             },
-            Token::GetInput(prompt) => {
-                write!(f, "get_input({})", prompt)
-            },
-            Token::Error(message) => {
-                write!(f, "error({})", message)
-            },
+            Token::GetInput(prompt) => write!(f, "get_input({})", prompt),
+            Token::Error(message) => write!(f, "error({})", message),
+            Token::Print(message) => write!(f, "print({})", message),
             Token::GenericWhitespace => write!(f, " "),
             Token::RootNodeToken => Ok(()), // the root token has no string representation
         }

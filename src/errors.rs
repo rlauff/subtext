@@ -23,5 +23,20 @@ pub enum ParseError {
     IndexMissingInRegisterCall,
     ExpectedScopeStartAfterFunctionDefinition,
     InputEndedUnexpectedly,
-    ExpectedFunctionNameAfterDef,
+}
+
+pub enum EvalError {
+    StartIndexOutOfBounds,
+    EndIndexOutOfBounds,
+    ScopeNotSimple,
+    MissingInput,
+    MalformedInput,
+    MissingPattern,
+    MalformedPattern,
+    MissingOutput,
+    MalformedOutput,
+    ScopeNotClosed,
+    ScopeEndedWhileParsingInput,
+    ScopeEndedWhileParsingPattern,
+    ScopeEndedWhileParsingOutput,
 }
