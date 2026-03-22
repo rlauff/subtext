@@ -102,7 +102,7 @@ impl LinkedChars {
         }
         // pretend we just added the node at start_index
         let last_node_added_idx = start_idx;
-        for (_, new_node) in linked_chars.into_iter_with_start(0) {
+        for (_, new_node) in linked_chars.into_enumerator_with_start(0) {
             self.arena.push(new_node);
             // the .node just added should be the .next of the last node added
             // the index of the just pushed node is len-1
@@ -111,14 +111,29 @@ impl LinkedChars {
         self.arena.last_mut().unwrap().next = Some(end_idx);
     }
 
-    pub fn iter_with_start(&self, start: usize) -> impl Iterator<Item = (usize, &CharNode)> {
+    // returns the subinterval between start_idx and end_idx (non-inclusive on both ends)
+    pub fn interval_to_string(&self, start_idx: usize, end_idx: usize) -> String {
+        let mut buffer = Vec::new();
+        for (i, node) in self.enumerate_with_start(start_idx) {
+            if i == end_idx {
+                return buffer.into_iter().collect();
+            };
+            buffer.push(node.c);
+        }
+        panic!("end_idx was never found");
+    }
+
+    pub fn enumerate_with_start(&self, start: usize) -> impl Iterator<Item = (usize, &CharNode)> {
         LinkedCharsIter {
             linked_chars: self,
             idx: start,
         }
     }
 
-    pub fn into_iter_with_start(self, start: usize) -> impl IntoIterator<Item = (usize, CharNode)> {
+    pub fn into_enumerator_with_start(
+        self,
+        start: usize,
+    ) -> impl IntoIterator<Item = (usize, CharNode)> {
         LinkedCharsOwnedIter {
             linked_chars: self,
             idx: start,

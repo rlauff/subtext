@@ -1,3 +1,5 @@
+use std::thread::Scope;
+
 use crate::linkes_chars::LinkedChars;
 
 enum Task {
@@ -7,6 +9,10 @@ enum Task {
     FunctionCall {
         function_name: String,
         input: String,
+    },
+    DefineFunction {
+        name: String,
+        definition: String,
     },
     RegisterCall {
         level: usize,
@@ -18,6 +24,7 @@ enum Task {
     PrintOutput {
         content: String,
     },
+    Chill, // nothing else to do, the interpreter can return
 }
 
 struct Job {
@@ -28,9 +35,48 @@ struct Job {
 
 fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Job {
     let mut chars_buffer = Vec::new(); // holds the read chars
-    loop {
-        match linked_chars.get(reader_idx).c {
-            '(' => { // this is a function call. Find the closing brace
+    for (i, node) in linked_chars.enumerate_with_start(reader_idx) {
+        match node.c {
+            '(' => {
+                // this is a function call. Find the closing brace
+                let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Round);
+                let full_string = linked_chars.interval_to_string(i, closing_brace_idx);
+                let task = match chars_buffer.iter().collect::<String>().as_str() {
+                    "get_input" => Task::GetInput {
+                        prompt: full_string,
+                    },
+                    "print_output" => Task::PrintOutput {
+                        content: full_string,
+                    },
+                    other_name => Task::FunctionCall {
+                        function_name: other_name.to_string(),
+                        input: full_string,
+                    },
+                };
+                return Job {
+                    start: i,
+                    end: closing_brace_idx,
+                    task,
+                };
+            }
+            '{' => {
+                let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Curly);
+                let full_string = linked_chars.interval_to_string(i, closing_brace_idx);
+                return Job {
+                    start: i,
+                    end: closing_brace_idx,
+                    task: Task::Scope {
+                        content: full_string,
+                    },
+                };
+            }
+            ' ' => {
+                if chars_buffer.iter().collect::<String>().as_str() == "def" {
+                    // find function name and return the job
+                } else {
+                    // its not a def, just delete the buffer and read on
+                    chars_buffer.clear();
+                }
             }
             c => chars_buffer.push(c),
         }
@@ -44,12 +90,11 @@ enum Brace {
     Round,
 }
 
-// returns the index to the node after the closing brace, or none if the closing brace is the last
-// char in the linked_chars
+// returns the index to the node containing the closing brace
 // panics if there is no closing brace
 fn find_closing_brace(linked_chars: &LinkedChars, opening_brace_idx: usize, brace: Brace) -> usize {
     let mut number_opened = 1;
-    for (idx, node) in linked_chars.iter_with_start(opening_brace_idx) {
+    for (idx, node) in linked_chars.enumerate_with_start(opening_brace_idx) {
         match node.c {
             '{' => {
                 if brace == Brace::Curly {
