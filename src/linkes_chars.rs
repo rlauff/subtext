@@ -1,11 +1,129 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CharNode {
     pub c: char,
-    pub next: Option<usize>, // index into arena of a LinkedChars object
+    pub next: Option<usize>, // Index into the arena of a LinkedChars object
 }
 
+#[derive(Clone, Debug)]
 pub struct LinkedChars {
-    arena: Vec<CharNode>, // the node at index 0 (the root) is not considered part of the content
+    // The node at index 0 (the root) is a dummy node and is not considered part of the content.
+    arena: Vec<CharNode>,
+}
+
+impl LinkedChars {
+    // Creates a new, empty LinkedChars instance with a dummy root node.
+    pub fn new() -> Self {
+        Self {
+            arena: vec![CharNode {
+                c: '\0',
+                next: None,
+            }],
+        }
+    }
+
+    // Creates a new LinkedChars object from any iterator that yields characters.
+    // This is highly useful for initializing the interpreter with a string of code.
+    pub fn new_from_iter<I: IntoIterator<Item = char>>(iter: I) -> Self {
+        // Start with a fresh, empty LinkedChars instance (which contains the dummy root node)
+        let mut linked_chars = Self::new();
+
+        // Keep track of the last node we added, starting with the dummy node at index 0
+        let mut last_idx = 0;
+
+        for c in iter {
+            let new_node = CharNode {
+                c,
+                next: None, // Will be updated when the next char is added
+            };
+
+            // Push the new character into the arena
+            linked_chars.arena.push(new_node);
+            let newly_added_idx = linked_chars.arena.len() - 1;
+
+            // Link the previously added node to this new node
+            linked_chars.get_mut(last_idx).next = Some(newly_added_idx);
+
+            // Update our tracker to the node we just added
+            last_idx = newly_added_idx;
+        }
+
+        linked_chars
+    }
+
+    // Checks if the linked list has no content (only the dummy node exists).
+    pub fn is_empty(&self) -> bool {
+        self.arena[0].next.is_none()
+    }
+
+    pub fn get(&self, idx: usize) -> &CharNode {
+        &self.arena[idx]
+    }
+
+    pub fn get_mut(&mut self, idx: usize) -> &mut CharNode {
+        &mut self.arena[idx]
+    }
+
+    // Removes the sequence of nodes after start_idx up to and including end_idx.
+    // start_idx MUST be the index of the node immediately PRECEDING the sequence to be removed.
+    pub fn remove_between(&mut self, start_idx: usize, end_idx: usize) {
+        let next_after_end = self.get(end_idx).next;
+        self.get_mut(start_idx).next = next_after_end;
+    }
+
+    // Replaces the sequence of nodes after start_idx up to and including end_idx
+    // with the contents of another LinkedChars object.
+    pub fn replace_between(&mut self, start_idx: usize, end_idx: usize, linked_chars: LinkedChars) {
+        if linked_chars.is_empty() {
+            // If the new content is empty, just remove the specified interval
+            self.remove_between(start_idx, end_idx);
+            return;
+        }
+
+        // Save the reference to the node AFTER the end_idx so we can link the new content to it.
+        // This ensures the node at end_idx (e.g., a closing brace) is successfully dropped.
+        let next_after_end = self.get(end_idx).next;
+
+        let mut last_node_added_idx = start_idx;
+
+        // We use the normal iterator and clone the nodes instead of a custom owned iterator.
+        for (_, node) in linked_chars.enumerate_with_start(0) {
+            let mut new_node = node.clone();
+            new_node.next = None; // Reset the next pointer, as we manage it manually below
+
+            self.arena.push(new_node);
+            let newly_added_idx = self.arena.len() - 1;
+
+            // Link the previously added node to the new node
+            self.get_mut(last_node_added_idx).next = Some(newly_added_idx);
+
+            // Update the tracker for the next iteration
+            last_node_added_idx = newly_added_idx;
+        }
+
+        // Link the very last node of the new text to the node AFTER the replaced segment
+        self.arena.last_mut().unwrap().next = next_after_end;
+    }
+
+    // Returns the substring between start_idx and end_idx (inclusive of end_idx).
+    pub fn interval_to_string(&self, start_idx: usize, end_idx: usize) -> String {
+        let mut buffer = Vec::new();
+        // The iterator yields nodes starting AFTER start_idx.
+        for (i, node) in self.enumerate_with_start(start_idx) {
+            buffer.push(node.c);
+            if i == end_idx {
+                return buffer.into_iter().collect();
+            }
+        }
+        panic!("end_idx was never found during interval_to_string");
+    }
+
+    // Returns an iterator that yields nodes starting AFTER the given start index.
+    pub fn enumerate_with_start(&self, start: usize) -> LinkedCharsIter {
+        LinkedCharsIter {
+            linked_chars: self,
+            idx: start,
+        }
+    }
 }
 
 pub struct LinkedCharsIter<'a> {
@@ -17,126 +135,13 @@ impl<'a> Iterator for LinkedCharsIter<'a> {
     type Item = (usize, &'a CharNode);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let old_idx = self.idx;
+        // We look at the 'next' pointer of the current node to find the new index.
         if let Some(new_idx) = self.linked_chars.get(self.idx).next {
             self.idx = new_idx;
-            Some((old_idx, self.linked_chars.get(new_idx)))
+            // Return the newly found index and its corresponding node
+            Some((new_idx, self.linked_chars.get(new_idx)))
         } else {
             None
-        }
-    }
-}
-
-pub struct LinkedCharsOwnedIter {
-    linked_chars: LinkedChars,
-    idx: usize,
-}
-
-impl Iterator for LinkedCharsOwnedIter {
-    type Item = (usize, CharNode);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let old_idx = self.idx;
-        if let Some(new_idx) = self.linked_chars.arena[self.idx].next {
-            self.idx = new_idx;
-            let dummy_node = CharNode {
-                c: '\0',
-                next: None,
-            };
-            let owned_node = std::mem::replace(&mut self.linked_chars.arena[new_idx], dummy_node);
-
-            Some((old_idx, owned_node))
-        } else {
-            None
-        }
-    }
-}
-
-impl CharNode {
-    fn new(c: char) -> Self {
-        CharNode { c, next: None }
-    }
-}
-
-impl LinkedChars {
-    pub fn from_iter(chars: impl IntoIterator<Item = char>) -> Self {
-        let mut char_nodes = vec![CharNode {
-            c: ' ',
-            next: Some(1),
-        }];
-        char_nodes.extend(chars.into_iter().enumerate().map(|(i, c)| CharNode {
-            c,
-            next: Some(i + 2),
-        }));
-        char_nodes.last_mut().unwrap().next = None;
-        LinkedChars { arena: char_nodes }
-    }
-
-    pub fn get(&self, index: usize) -> &CharNode {
-        &self.arena[index]
-    }
-
-    pub fn get_mut(&mut self, index: usize) -> &mut CharNode {
-        &mut self.arena[index]
-    }
-
-    fn is_empty(&self) -> bool {
-        self.arena.len() == 1
-    }
-    // links the node at start_idx to the next of end_idx
-    // this removes all nodes in between, excluding the one at start_idx
-    // but including the one at end_idx
-    fn remove_between(&mut self, start_idx: usize, end_idx: usize) {
-        if start_idx >= self.arena.len() || end_idx >= self.arena.len() {
-            panic!("Tried to remove out of range") // TODO: add proper error types
-        }
-        // note that this is correct even if there is the node at end_idx is the last one
-        // in this case we set the .next of the start node to None, which is what we want
-        self.get_mut(start_idx).next = self.get(end_idx).next;
-    }
-
-    fn replace_between(&mut self, start_idx: usize, end_idx: usize, linked_chars: LinkedChars) {
-        // if the passed chars are empty, then we have nothing to do
-        if linked_chars.is_empty() {
-            return;
-        }
-        // pretend we just added the node at start_index
-        let last_node_added_idx = start_idx;
-        for (_, new_node) in linked_chars.into_enumerator_with_start(0) {
-            self.arena.push(new_node);
-            // the .node just added should be the .next of the last node added
-            // the index of the just pushed node is len-1
-            self.get_mut(last_node_added_idx).next = Some(self.arena.len() - 1);
-        }
-        self.arena.last_mut().unwrap().next = Some(end_idx);
-    }
-
-    // returns the subinterval between start_idx and end_idx (non-inclusive on both ends)
-    pub fn interval_to_string(&self, start_idx: usize, end_idx: usize) -> String {
-        let mut buffer = Vec::new();
-        for (i, node) in self.enumerate_with_start(start_idx) {
-            if i == end_idx {
-                return buffer.into_iter().collect();
-            };
-            buffer.push(node.c);
-        }
-        panic!("end_idx was never found");
-    }
-
-    pub fn enumerate_with_start(&self, start: usize) -> impl Iterator<Item = (usize, &CharNode)> {
-        LinkedCharsIter {
-            linked_chars: self,
-            idx: start,
-        }
-    }
-
-    pub fn into_enumerator_with_start(
-        self,
-        start: usize,
-    ) -> impl IntoIterator<Item = (usize, CharNode)> {
-        LinkedCharsOwnedIter {
-            linked_chars: self,
-            idx: start,
         }
     }
 }
