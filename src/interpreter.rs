@@ -1,5 +1,7 @@
 use crate::linked_chars::LinkedChars;
 
+use crate::scope::evaluate_scope;
+
 // Helper to easily switch parsing logic between round and curly braces.
 #[derive(PartialEq)]
 enum Brace {
@@ -102,6 +104,12 @@ fn find_function_name(linked_chars: &LinkedChars, start_idx: usize) -> (String, 
     panic!("Never found the scope with the actual function def");
 }
 
+// returns the next job to do
+// start should point to the node which comes BEFORE the first relevant one
+// end should point to the last relevant node
+// Example: here is a scope:  _{ foo : bar : no match }
+//                            ^start                  ^end
+// start points to the _, end point to the }
 fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Job {
     let mut chars_buffer = Vec::new(); // Holds the read chars
 
@@ -243,6 +251,25 @@ impl Interpreter<'_> {
         // TODO: find jobs and apply the resp. changes until we get Chill back
         // After doing a Job, put the reading head at the start of the returned job.
         // This way, we read the output of the last evaluation back in immediately (for recursion).
+        let mut reading_head = 0;
+        loop {
+            let job = get_new_job(&self.state, reading_head);
+            reading_head = job.start; // always read the replacement back in 
+            match job.task {
+                Task::Chill => break, // we are done
+
+                Task::Scope { content: scope } => {
+                    // TODO make sure that the start and end of the job point to the right ndoes
+                    // evaluate the scope
+                    let result_of_evaluation = evaluate_scope(scope, self);
+                    // modify the state
+                    self.state
+                        .replace_between(job.start, job.end, result_of_evaluation);
+                }
+
+                _ => unimplemented!(),
+            }
+        }
     }
 }
 

@@ -110,6 +110,12 @@ impl LinkedChars {
         panic!("end_idx was never found during interval_to_string");
     }
 
+    pub fn make_string(&self) -> String {
+        self.enumerate_with_start(0)
+            .map(|(_i, node)| node.c)
+            .collect::<String>()
+    }
+
     // Returns an iterator that yields nodes starting AFTER the given start index.
     pub fn enumerate_with_start(&self, start: usize) -> LinkedCharsIter<'_> {
         LinkedCharsIter {
