@@ -102,6 +102,7 @@ pub fn evaluate_scope(scope: String, parent_interpreter: &Interpreter) -> Linked
                 //  };
                 // pattern_interpreter.evaluate();
                 let pattern = pattern_string.trim().to_string();
+                let output_string = output_string.trim().to_string();
 
                 // 6. Create Regex and attempt to match against the evaluated input
                 let re =
@@ -213,6 +214,24 @@ mod tests {
         let scope = "{ apple :: banana|apple => fruit || dog|cat => animal }".to_string();
         let result = evaluate_scope(scope, &parent);
         assert_eq!(result.make_string().trim(), "fruit");
+    }
+
+    #[test]
+    fn test_evaluate_with_register_call() {
+        let parent = dummy_interpreter();
+        let scope = "{ world hello, :: (.....) (......) => #2 #1! }".to_string();
+        let result = evaluate_scope(scope, &parent);
+        assert_eq!(result.make_string().trim(), "hello, world!");
+    }
+
+    #[test]
+    fn test_evaluate_with_register_call_nested() {
+        let parent = dummy_interpreter();
+        let scope =
+            "{ world hello, moon! :: (.....) (......) (.*) => #2 #1! { Goodby, :: (.*) => #1 ^#3 } }"
+                .to_string();
+        let result = evaluate_scope(scope, &parent);
+        assert_eq!(result.make_string().trim(), "hello, world! Goodby, moon!");
     }
 
     // --- Error Case Tests ---

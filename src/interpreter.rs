@@ -2,6 +2,8 @@ use crate::linked_chars::LinkedChars;
 
 use crate::scope::evaluate_scope;
 
+use std::io::{self, Write};
+
 // An Interpreter gets passed a LinkedChars and is tasked to evaluate it until there are no further changes.
 // It will save regex matches into its own registers.
 // Its children may use the contents of these registers by using the ^ operator on register calls.
@@ -11,10 +13,6 @@ pub struct Interpreter<'a> {
     // Example: { ab : (.)(.) : { ^$2 ^$1 : ba : it was ab; : it was not ab} }
     //          ^parent start   ^child start                                ^both end
     pub parent: Option<&'a Interpreter<'a>>,
-    // registers holds the capture groups from the parent! This is because we want to use an
-    // interpreter to evaluate the input and output strings of a scope. As these are then their own
-    // interpreters, they should have their regirst point to the scope that we actually want to
-    // evaluate.
     pub registers: Vec<String>,
     pub functions: Vec<Function>,
 }
@@ -96,32 +94,29 @@ fn find_closing_brace(linked_chars: &LinkedChars, start_idx: usize, brace_type: 
     panic!("Matching closing brace not found");
 }
 
-// returns the register number and the index to the space terminating the number
-// (register number, idx to space)
+// returns the register number and the index to the last digit
+// any non digit char can terminate the register call
+// (register number, idx_to_last_digit)
 fn find_register_number(linked_chars: &LinkedChars, start_idx: usize) -> (usize, usize) {
     let mut register_number = 0;
-    let mut found_at_least_one_digit = false;
+    let mut last_found_digit_idx = 0;
     for (i, node) in linked_chars.enumerate_with_start(start_idx) {
         match node.c {
-            ' ' => {
-                if !found_at_least_one_digit {
-                    panic!("no digit found after register call")
-                };
-                return (register_number, i);
-            }
-
             '0'..='9' => {
                 let new_digit = node.c.to_digit(10).unwrap() as usize;
                 register_number = 10 * register_number + new_digit;
-                found_at_least_one_digit = true;
+                last_found_digit_idx = i;
             }
 
             _ => {
-                panic!("illegal char found while parsing register number");
+                break;
             }
         }
     }
-    panic!("no terminating whitespace found");
+    if last_found_digit_idx == 0 {
+        panic!("no digit found after register call")
+    };
+    (register_number, last_found_digit_idx)
 }
 
 // Scans for a function name after a 'def' keyword.
@@ -181,33 +176,33 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Job {
                         oldest_non_whitespace = Some(prev_idx);
                     }
                     number_consecutive_uptick = 0;
-                } else {
-                    // This is a function call. Find the closing brace.
-                    let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Round);
-
-                    // Use prev_idx to include the '(' itself in the extracted string
-                    let full_string = linked_chars.interval_to_string(prev_idx, closing_brace_idx);
-                    let name: String = chars_buffer.iter().collect();
-
-                    let task = match name.as_str() {
-                        "get_input" => Task::GetInput {
-                            prompt: full_string,
-                        },
-                        "print_output" => Task::PrintOutput {
-                            content: full_string,
-                        },
-                        other_name => Task::FunctionCall {
-                            function_name: other_name.to_string(),
-                            input: full_string,
-                        },
-                    };
-
-                    return Job {
-                        start: oldest_non_whitespace.unwrap_or(0),
-                        end: closing_brace_idx,
-                        task,
-                    };
+                    continue;
                 }
+                // This is a function call. Find the closing brace.
+                let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Round);
+
+                // Use prev_idx to include the '(' itself in the extracted string
+                let full_string = linked_chars.interval_to_string(prev_idx, closing_brace_idx);
+                let name: String = chars_buffer.iter().collect();
+
+                let task = match name.as_str() {
+                    "get_input" => Task::GetInput {
+                        prompt: full_string,
+                    },
+                    "print_output" => Task::PrintOutput {
+                        content: full_string,
+                    },
+                    other_name => Task::FunctionCall {
+                        function_name: other_name.to_string(),
+                        input: full_string,
+                    },
+                };
+
+                return Job {
+                    start: oldest_non_whitespace.unwrap_or(0),
+                    end: closing_brace_idx,
+                    task,
+                };
             }
 
             '{' => {
@@ -215,7 +210,7 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Job {
                 let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Curly);
                 // Use prev_idx to include the '{' itself in the extracted string
                 // TODO: In the scope evaluation, the braces are striped away anyway
-                // we could just not pup them in in the first place
+                // we could just not put them in at all
                 let full_string = linked_chars.interval_to_string(prev_idx, closing_brace_idx);
 
                 return Job {
@@ -266,12 +261,13 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Job {
             '#' => {
                 // the new char for register calls, as not to conflict with regex syntax
                 // find the register which should be called
-                let (register_number, idx_to_terminating_space) =
+                let (register_number, idx_to_terminating_char) =
                     find_register_number(linked_chars, i);
+                // println!("{}, {}", register_number, idx_to_terminating_char);
 
                 return Job {
-                    start: oldest_uptick.unwrap_or(0),
-                    end: idx_to_terminating_space,
+                    start: oldest_uptick.unwrap_or(prev_idx),
+                    end: idx_to_terminating_char,
                     task: Task::RegisterCall {
                         level: number_consecutive_uptick,
                         index: register_number,
@@ -312,23 +308,21 @@ pub struct Function {
 
 impl Interpreter<'_> {
     pub fn evaluate(&mut self) {
-        // TODO: find jobs and apply the resp. changes until we get Chill back
+        // find jobs and apply the resp. changes until we get Chill back
         // After doing a Job, put the reading head at the start of the returned job.
         // This way, we read the output of the last evaluation back in immediately (for recursion).
         let mut reading_head = 0;
-        loop {
+        'outer: loop {
             let job = get_new_job(&self.state, reading_head);
             reading_head = job.start; // always read the replacement back in 
             match job.task {
                 Task::Chill => break, // we are done
 
                 Task::Scope { content: scope } => {
-                    // TODO make sure that the start and end of the job point to the right ndoes
                     // evaluate the scope
-                    let result_of_evaluation = evaluate_scope(scope, self);
+                    let result = evaluate_scope(scope, self);
                     // modify the state
-                    self.state
-                        .replace_between(job.start, job.end, result_of_evaluation);
+                    self.state.replace_between(job.start, job.end, result);
                 }
 
                 Task::RegisterCall { level, index } => {
@@ -337,7 +331,72 @@ impl Interpreter<'_> {
                     self.state.replace_between(job.start, job.end, result);
                 }
 
-                _ => unimplemented!(),
+                Task::DefineFunction { name, definition } => {
+                    // when looking for a function, we will look through this vector in reverse.
+                    // This way a new definition will shadow a potential old one
+                    self.functions.push(Function {
+                        name,
+                        body: definition,
+                    });
+                    self.state.remove_between(job.start, job.end);
+                }
+
+                Task::FunctionCall {
+                    function_name,
+                    input,
+                } => {
+                    let found_function = self
+                        .functions
+                        .iter()
+                        .find(|func| func.name == function_name);
+
+                    match found_function {
+                        Some(function) => {
+                            let clean_input = if input.starts_with('(') && input.ends_with(')') {
+                                &input[1..input.len() - 1]
+                            } else {
+                                &input
+                            };
+
+                            let clean_body =
+                                if function.body.starts_with('{') && function.body.ends_with('}') {
+                                    &function.body[1..function.body.len() - 1]
+                                } else {
+                                    &function.body
+                                };
+
+                            let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
+
+                            let result = evaluate_scope(scope, self);
+                            self.state.replace_between(job.start, job.end, result);
+                        }
+                        None => {
+                            panic!(
+                                "Called an undefined function, tried to call {}",
+                                function_name
+                            );
+                        }
+                    }
+                }
+
+                Task::GetInput { prompt } => {
+                    print!("{}", prompt);
+                    io::stdout().flush().unwrap();
+                    let mut response = String::new();
+
+                    io::stdin()
+                        .read_line(&mut response)
+                        .expect("Failed to read line");
+
+                    let clean_response = response.trim().to_string();
+                    let ls = LinkedChars::from_iter(clean_response.chars());
+                    self.state.replace_between(job.start, job.end, ls);
+                }
+
+                Task::PrintOutput { content } => {
+                    println!("{}", content);
+                    self.state.remove_between(job.start, job.end);
+                }
             }
         }
     }
@@ -351,7 +410,6 @@ impl Interpreter<'_> {
                 panic!("no parent scope found, register call is too high.");
             }
         }
-
         // We successfully went up `level` times. Return the register found here.
         current.registers[index].clone()
     }
@@ -475,5 +533,25 @@ mod tests {
         } else {
             panic!("Expected FunctionCall");
         }
+    }
+
+    // function call tests
+
+    #[test]
+    fn define_and_call_function() {
+        let lc = LinkedChars::from_iter(
+            "def f { a => hello, world! || b => goodby, moon! }f(a) f(b)".chars(),
+        );
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+        };
+        interpreter.evaluate();
+        assert_eq!(
+            interpreter.state.make_string(),
+            "hello, world! goodby, moon!".to_string()
+        );
     }
 }

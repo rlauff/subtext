@@ -14,21 +14,16 @@ pub struct LinkedChars {
     arena: Vec<CharNode>,
 }
 
-impl LinkedChars {
-    // Creates a new, empty LinkedChars instance with a dummy root node.
-    pub fn new() -> Self {
-        Self {
+impl FromIterator<char> for LinkedChars {
+    // Creates a new LinkedChars object from any iterator that yields characters.
+    // Highly useful for parsing strings into our custom linked list structure.
+    fn from_iter<I: IntoIterator<Item = char>>(iter: I) -> Self {
+        let mut linked_chars = Self {
             arena: vec![CharNode {
                 c: '\0',
                 next: None,
             }],
-        }
-    }
-
-    // Creates a new LinkedChars object from any iterator that yields characters.
-    // Highly useful for parsing strings into our custom linked list structure.
-    pub fn from_iter<I: IntoIterator<Item = char>>(iter: I) -> Self {
-        let mut linked_chars = Self::new();
+        };
         let mut last_idx = 0; // Start linking from the dummy node
 
         for c in iter {
@@ -42,6 +37,17 @@ impl LinkedChars {
         }
 
         linked_chars
+    }
+}
+
+impl LinkedChars {
+    pub fn new() -> Self {
+        LinkedChars {
+            arena: vec![CharNode {
+                c: '\0',
+                next: None,
+            }],
+        }
     }
 
     // Checks if the linked list has no content (only the dummy node exists).
