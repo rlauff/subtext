@@ -554,4 +554,39 @@ mod tests {
             "hello, world! goodby, moon!".to_string()
         );
     }
+
+    #[test]
+    fn define_and_call_function_nested() {
+        let lc = LinkedChars::from_iter(
+            "def f { a => hello, world! || b => g(b) }def g { a => f(b) || b => f(a) }f(b)".chars(),
+        );
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+        };
+        interpreter.evaluate();
+        assert_eq!(interpreter.state.make_string(), "hello, world!".to_string());
+    }
+
+    #[test]
+    fn define_and_call_function_longer() {
+        let lc = LinkedChars::from_iter(
+            "def longer { 
+                    (.*)(.)&(.*)(.) => longer(^#1&^#3)
+                ||  .+&             => >
+                ||    &.+           => <
+                ||    &             => =}longer(abc&cde) longer(ab&c) longer(a&ab)"
+                .chars(),
+        );
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+        };
+        interpreter.evaluate();
+        assert_eq!(interpreter.state.make_string(), "= > <".to_string());
+    }
 }
