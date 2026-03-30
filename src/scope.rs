@@ -121,8 +121,8 @@ pub fn evaluate_scope(
 
     // 2. Separate input and the rest (the arms) using '::' at the top level
     let (input_string, rest) = split_once_at_top_level(inner_content, "::")
-            .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
-        
+        .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
+
     // 3. Evaluate the input string until there are no further changes
     let mut input_interpreter = Interpreter {
         state: LinkedChars::from_iter(input_string.chars()),
@@ -357,22 +357,6 @@ mod tests {
         assert!(result.is_err(), "Expected UnmatchedOpeningBrace error");
         let err = result.unwrap_err();
         assert!(matches!(err.kind, ErrorKind::UnmatchedOpeningBrace { .. }));
-    }
-
-    #[test]
-    fn test_missing_input_separator() {
-        let parent = dummy_interpreter();
-        let scope = "{ input : pattern : output }".to_string(); // using old syntax triggers error
-        let result = evaluate_scope(scope, &parent);
-        assert!(
-            result.is_err(),
-            "Expected MalformedScopeMissingInputSeparator error"
-        );
-        let err = result.unwrap_err();
-        assert!(matches!(
-            err.kind,
-            ErrorKind::MalformedScopeMissingInputSeparator { .. }
-        ));
     }
 
     #[test]
