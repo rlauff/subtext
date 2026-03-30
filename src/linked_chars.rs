@@ -25,16 +25,54 @@ impl FromIterator<char> for LinkedChars {
                 next: None,
             }],
         };
-        let mut last_idx = 0; // Start linking from the dummy node
+
+        let mut last_idx = 0;
+        let mut in_comment = false;
+        let mut pending_slash = false;
 
         for c in iter {
-            let new_node = CharNode { c, next: None };
-            linked_chars.arena.push(new_node);
-            let newly_added_idx = linked_chars.arena.len() - 1;
+            if in_comment {
+                if c == '\n' {
+                    in_comment = false;
+                }
+                continue;
+            }
 
-            // Link the previous node to this new one
-            linked_chars.get_mut(last_idx).next = Some(newly_added_idx);
-            last_idx = newly_added_idx;
+            if pending_slash {
+                if c == '/' {
+                    in_comment = true;
+                    pending_slash = false;
+                    continue;
+                } else {
+                    let slash_node = CharNode { c: '/', next: None };
+                    linked_chars.arena.push(slash_node);
+
+                    let slash_idx = linked_chars.arena.len() - 1;
+                    linked_chars.get_mut(last_idx).next = Some(slash_idx);
+                    last_idx = slash_idx;
+
+                    pending_slash = false;
+                }
+            }
+
+            if c == '/' {
+                pending_slash = true;
+            } else {
+                let new_node = CharNode { c, next: None };
+                linked_chars.arena.push(new_node);
+
+                let newly_added_idx = linked_chars.arena.len() - 1;
+                linked_chars.get_mut(last_idx).next = Some(newly_added_idx);
+                last_idx = newly_added_idx;
+            }
+        }
+
+        if pending_slash {
+            let slash_node = CharNode { c: '/', next: None };
+            linked_chars.arena.push(slash_node);
+
+            let slash_idx = linked_chars.arena.len() - 1;
+            linked_chars.get_mut(last_idx).next = Some(slash_idx);
         }
 
         linked_chars

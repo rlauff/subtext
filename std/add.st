@@ -1,3 +1,6 @@
+
+// summing two digits and potentially a carry indicated by a c
+
 def sum_two_digits {
         00c                                              => 1 
     || (?:01|10)c                                        => 2     
@@ -41,14 +44,37 @@ def sum_two_digits {
     || (\d?)                                             => #1
 }
 
+// adds two positive integers
+// Matches against Aa+Bb&cP
+// a and b are single digits,
+// c is a carry (might not be there)
+// P is the partial result (might not be there)
+// then we add a and be using the above helper function and build the next call to add
+// the other arms handle the cases where one side is empty
+
+
+
 def add {
-            (\d*)(\d)\+(\d*)(\d)&?(c?)(\d*)     => add(^#1+^#3&{ sum_two_digits(^^^#2^^^#4^^^#5) :: (\d)(c?) => #2#1^^#6 })
-    ||      (\d+)\+?&c(\d*)                     => add(^#1+1&^#2)
-    ||      \+(\d+)&c(\d*)                      => add(^#1+1&^#2)
-    ||      (\d+)\+?&?(\d*)                     => #1#2
-    ||      \+(\d+)&?(\d*)                      => #1#2
-    ||      (\d*)                               => #1
+        // Core addition for digits on both sides
+        (\d*)(\d)\+(\d*)(\d)&?(c?)(\d*) => add(^#1+^#3&{ sum_two_digits(^^^#2^^^#4^^^#5) :: (\d)(c?) => #2#1^^#6 })
+        
+        // Carry: digits remaining on the LEFT (e.g., 1+&c1)
+    ||  (\d+)\+&c(\d*)                  => add(^#1+1&^#2)
+    
+        // Carry: digits remaining on the RIGHT or neither (e.g., +1&c1 or +&c1)
+    ||  \+(\d*)&c(\d*)                  => add(^#1+1&^#2)
+    
+        // Cleanup: digits remaining on the LEFT, no carry (e.g., 1+&3)
+    ||  (\d+)\+&?(\d*)                  => #1#2
+    
+        // Cleanup: digits remaining on the RIGHT or neither (e.g., +1&3)
+    ||  \+(\d*)&?(\d*)                  => #1#2
+    
+        // Fallback
+    ||  (\d*)                           => #1
 }
+
+// tests 
 
 print_output(add(1+2))
 
@@ -56,7 +82,33 @@ print_output(add(10+5))
 
 print_output(add(10000000+10000000))
 
+print_output(add(13+8))
+print_output(add(8+13))
 
+def are_equal {
+    (.*)(.)&(.*)(.)  => { ^#2^#4 :: 00|11|22|33|44|55|66|77|88|99 => are_equal(^^#1&^^#3) || => n }
+    || &                => y
+    ||  .*&             => n
+    ||  &.*             => n 
+}
+
+// takes an integer and computes the the corresponding fibonacci number
+// the first match arm is uses as an initializer (matching the passed digit 
+// after that, we call with A&B&n&N 
+// A and B are (Fib(n), Fib(n-1))
+// N is how many iterations should be performed in total
+
+
+def fibonacci {
+    (\d+) (\d+) (\d+) (\d+) => 
+    {
+        are_equal(^^#3&^^#4)    ::  y     => ^#1 
+                                ||  n     => fibonacci(add(^^^#1+^^^#2) ^^#1  add(^^^#3+1) ^^#4)
+    }
+   || (\d+)                   => fibonacci(1 1 1 ^#1)
+}
+
+print_output(fibonacci(get_input(Which fibonacci number do you want?: )))
 
 
 
