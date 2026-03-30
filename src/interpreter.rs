@@ -3,8 +3,8 @@ use crate::linked_chars::LinkedChars;
 
 use crate::scope::evaluate_scope;
 
-use std::io::{self, Write};
 use std::fs;
+use std::io::{self, Write};
 
 // An Interpreter gets passed a LinkedChars and is tasked to evaluate it until there are no further changes.
 // It will save regex matches into its own registers.
@@ -231,9 +231,7 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                     "get_input" => Task::GetInput {
                         prompt: full_string,
                     },
-                    "get_file" => Task::GetFile {
-                        path: full_string,
-                    },
+                    "get_file" => Task::GetFile { path: full_string },
                     "print_output" => Task::PrintOutput {
                         content: full_string,
                     },
@@ -478,11 +476,10 @@ impl Interpreter<'_> {
                     let file_content = match fs::read_to_string(clean_path) {
                         Ok(content) => content,
                         Err(err) => {
-                            let io_error =
-                                SubtextError::new(ErrorKind::FileReadError {
-                                    path: clean_path.to_string(),
-                                    reason: err.to_string(),
-                                });
+                            let io_error = SubtextError::new(ErrorKind::FileReadError {
+                                path: clean_path.to_string(),
+                                reason: err.to_string(),
+                            });
                             return Err(self.attach_backtrace_if_empty(io_error, None));
                         }
                     };

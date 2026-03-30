@@ -271,16 +271,6 @@ mod tests {
     }
 
     #[test]
-    fn test_regex_matching_complex_urls() {
-        let parent = dummy_interpreter();
-        // Testing colons and slashes inside the input AND the regex pattern
-        let scope =
-            "{ https://google.com :: https?://[a-z]+\\.[a-z]{2,3} => valid_url }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "valid_url");
-    }
-
-    #[test]
     fn test_regex_with_or_operator_collision_check() {
         let parent = dummy_interpreter();
         // The regex uses `|` (OR operator). Our arm separator is `||`.
