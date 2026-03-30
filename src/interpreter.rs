@@ -410,21 +410,23 @@ impl Interpreter<'_> {
 
                     match found_function {
                         Some(function) => {
-                            let clean_input = if input.starts_with('(') && input.ends_with(')') {
-                                &input[1..input.len() - 1]
-                            } else {
-                                &input
-                            };
-
-                            let clean_body =
-                                if function.body.starts_with('{') && function.body.ends_with('}') {
-                                    &function.body[1..function.body.len() - 1]
+                            let trimmed_input = input.trim();
+                            let clean_input =
+                                if trimmed_input.starts_with('(') && trimmed_input.ends_with(')') {
+                                    &trimmed_input[1..trimmed_input.len() - 1]
                                 } else {
-                                    &function.body
+                                    trimmed_input
+                                };
+
+                            let trimmed_body = function.body.trim();
+                            let clean_body =
+                                if trimmed_body.starts_with('{') && trimmed_body.ends_with('}') {
+                                    &trimmed_body[1..trimmed_body.len() - 1]
+                                } else {
+                                    trimmed_body
                                 };
 
                             let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
-
                             let result = evaluate_scope(scope, self)
                                 .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
                             self.state.replace_between(job.start, job.end, result);
