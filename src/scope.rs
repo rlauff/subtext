@@ -162,14 +162,14 @@ pub fn evaluate_scope(
         // up the rest of the parsing
         //
         // Evaluate the pattern string
-        let mut pattern_interpreter = Interpreter {
-            state: LinkedChars::from_iter(pattern_string.trim().chars()),
-            parent: Some(parent_interpreter),
-            registers: vec![],
-            functions: parent_interpreter.functions.clone(),
-        };
-        pattern_interpreter.evaluate()?;
-        let pattern = pattern_interpreter.state.make_string().trim().to_string();
+        // let mut pattern_interpreter = Interpreter {
+        //     state: LinkedChars::from_iter(pattern_string.chars()),
+        //     parent: Some(parent_interpreter),
+        //     registers: vec![],
+        //     functions: parent_interpreter.functions.clone(),
+        //  };
+        // pattern_interpreter.evaluate();
+        let pattern = pattern_string.trim().to_string();
         let output_string = output_string.trim().to_string();
 
         // 6. Create Regex and attempt to match against the evaluated input
@@ -220,7 +220,7 @@ pub fn evaluate_scope(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{error::ErrorKind, interpreter};
+    use crate::error::ErrorKind;
 
     // Helper to quickly spin up a dummy parent interpreter for our tests
     fn dummy_interpreter() -> Interpreter<'static> {
@@ -230,19 +230,6 @@ mod tests {
             registers: vec![],
             functions: vec![],
         }
-    }
-
-    #[test]
-    fn delay_operator_test() {
-        let lc = LinkedChars::from_iter("'( :: => a}b".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            parent: None,
-            registers: Vec::new(),
-            functions: Vec::new(),
-        };
-        let _result = interpreter.evaluate();
-        assert_eq!(interpreter.state.make_string().trim(), "( :: => a}b");
     }
 
     #[test]
@@ -278,9 +265,19 @@ mod tests {
         // The regex uses a colon inside a non-capturing group `(?:...)` and matches a literal time.
         // Input: "12:30". Regex: "(?:12|24):[0-5][0-9]".
         // With the old single colon syntax, this would have broken the parser immediately!
-        let scope = "{ 12:30 :: '(?:12|24):[0-5][0-9] => match_time }".to_string();
+        let scope = "{ 12:30 :: (?:12|24):[0-5][0-9] => match_time }".to_string();
         let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
         assert_eq!(result.make_string().trim(), "match_time");
+    }
+
+    #[test]
+    fn test_regex_matching_complex_urls() {
+        let parent = dummy_interpreter();
+        // Testing colons and slashes inside the input AND the regex pattern
+        let scope =
+            "{ https://google.com :: https?://[a-z]+\\.[a-z]{2,3} => valid_url }".to_string();
+        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
+        assert_eq!(result.make_string().trim(), "valid_url");
     }
 
     #[test]
@@ -296,7 +293,7 @@ mod tests {
     #[test]
     fn test_evaluate_with_register_call() {
         let parent = dummy_interpreter();
-        let scope = "{ world hello, :: '(.....) (......) => #2  #1! }".to_string();
+        let scope = "{ world hello, :: (.....) (......) => #2  #1! }".to_string();
         let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
         assert_eq!(result.make_string().trim(), "hello, world!");
     }
@@ -305,7 +302,7 @@ mod tests {
     fn test_evaluate_with_register_call_nested() {
         let parent = dummy_interpreter();
         let scope =
-            "{ world hello, moon! :: '(.....) (......) (.*) => #2  #1! { Goodby, :: '(.*) => #1  ^#3 } }"
+            "{ world hello, moon! :: (.....) (......) (.*) => #2  #1! { Goodby, :: (.*) => #1  ^#3 } }"
                 .to_string();
         let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
         assert_eq!(result.make_string().trim(), "hello, world! Goodby, moon!");

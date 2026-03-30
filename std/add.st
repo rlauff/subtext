@@ -52,6 +52,8 @@ def sum_two_digits {
 // then we add a and be using the above helper function and build the next call to add
 // the other arms handle the cases where one side is empty
 
+
+
 def add {
         // Core addition for digits on both sides
         (\d*)(\d)\+(\d*)(\d)&?(c?)(\d*) => add(^#1+^#3&{ sum_two_digits(^^^#2^^^#4^^^#5) :: (\d)(c?) => #2#1^^#6 })
@@ -77,4 +79,3 @@ def sum {
     ||      (\d+)\+(\d*)              => add(^#1+^#2)
     ||      (\d*)                     => #1
 }
-
