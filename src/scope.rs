@@ -9,7 +9,7 @@ use regex::Regex;
 fn split_once_at_top_level(
     input: &str,
     delimiter: &str,
-) -> Result<Option<(String, String)>, SubtextError> {
+) -> Result<(String, Option<String>), SubtextError> {
     let mut stack: Vec<(char, usize)> = Vec::new();
     let mut i = 0;
 
@@ -35,7 +35,7 @@ fn split_once_at_top_level(
                 // We found the multi-character delimiter at the top level!
                 let left = input[..i].to_string();
                 let right = input[i + delimiter.len()..].to_string();
-                return Ok(Some((left, right)));
+                return Ok((left, Some(right)));
             }
             _ => {}
         }
@@ -51,7 +51,7 @@ fn split_once_at_top_level(
         }));
     }
 
-    Ok(None)
+    Ok((input.to_string(), None))
 }
 
 /// Helper function: Splits a string at ALL occurrences of a string delimiter
@@ -120,19 +120,9 @@ pub fn evaluate_scope(
     };
 
     // 2. Separate input and the rest (the arms) using '::' at the top level
-    let (input_string, rest) =
-        match split_once_at_top_level(inner_content, "::")
-            .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?
-        {
-            Some(result) => result,
-            None => {
-                return Err(parent_interpreter.attach_backtrace_without_highlight(
-                    SubtextError::new(ErrorKind::MalformedScopeMissingInputSeparator {
-                        scope_content: inner_content.trim().to_string(),
-                    }),
-                ));
-            }
-        };
+    let (input_string, rest) = split_once_at_top_level(inner_content, "::")
+            .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
+        
     // 3. Evaluate the input string until there are no further changes
     let mut input_interpreter = Interpreter {
         state: LinkedChars::from_iter(input_string.chars()),
@@ -143,6 +133,12 @@ pub fn evaluate_scope(
     input_interpreter.evaluate()?;
     let input = input_interpreter.state.make_string().trim().to_string();
 
+    //3.5 If there is no :: we have a scope which  returns the processed input
+    let rest = match rest {
+        Some(r) => r,
+        None => return Ok(input_interpreter.state),
+    };
+
     // 4. Split the rest into individual arms (separated by '||')
     let arms = split_all_at_top_level(&rest, "||")
         .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
@@ -152,8 +148,8 @@ pub fn evaluate_scope(
         let (pattern_string, output_string) = match split_once_at_top_level(&arm, "=>")
             .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?
         {
-            Some(result) => result,
-            None => {
+            (left, Some(right)) => (left, right),
+            (_, None) => {
                 return Err(parent_interpreter.attach_backtrace_without_highlight(
                     SubtextError::new(ErrorKind::MalformedArmMissingArrow {
                         arm_content: arm.trim().to_string(),
