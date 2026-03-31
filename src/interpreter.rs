@@ -371,7 +371,7 @@ impl Interpreter<'_> {
                     let result = evaluate_scope(scope, self)
                         .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
                     // modify the state
-                    self.state.replace_between(job.start, job.end, result);
+                    self.state.replace_between(job.start, job.end, &result);
                 }
 
                 Task::RegisterCall {
@@ -383,7 +383,7 @@ impl Interpreter<'_> {
                         .get_register_at_level(level, requested_index)
                         .map_err(|err| self.attach_backtrace_if_empty(err, Some(position)))?;
                     let result = LinkedChars::from_iter(register_value.chars());
-                    self.state.replace_between(job.start, job.end, result);
+                    self.state.replace_between(job.start, job.end, &result);
                 }
 
                 Task::DefineFunction { name, definition } => {
@@ -427,7 +427,7 @@ impl Interpreter<'_> {
                             let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
                             let result = evaluate_scope(scope, self)
                                 .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
-                            self.state.replace_between(job.start, job.end, result);
+                            self.state.replace_between(job.start, job.end, &result);
                         }
                         None => {
                             return Err(self.attach_backtrace_if_empty(
@@ -463,7 +463,7 @@ impl Interpreter<'_> {
 
                     let clean_response = response.trim().to_string();
                     let ls = LinkedChars::from_iter(clean_response.chars());
-                    self.state.replace_between(job.start, job.end, ls);
+                    self.state.replace_between(job.start, job.end, &ls);
                 }
 
                 Task::GetFile { path } => {
@@ -486,7 +486,7 @@ impl Interpreter<'_> {
 
                     let trimmed_content = file_content.trim().to_string();
                     let ls = LinkedChars::from_iter(trimmed_content.chars());
-                    self.state.replace_between(job.start, job.end, ls);
+                    self.state.replace_between(job.start, job.end, &ls);
                 }
 
                 Task::PrintOutput { content } => {
