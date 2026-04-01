@@ -108,21 +108,6 @@ fn split_all_at_top_level(input: &str, delimiter: &str) -> Result<Vec<String>, S
     Ok(result)
 }
 
-fn build_scope_state(
-    prefix: &str,
-    input: &str,
-    inner_after_input: &str,
-    suffix: &str,
-) -> LinkedChars {
-    let mut full =
-        String::with_capacity(prefix.len() + input.len() + inner_after_input.len() + suffix.len());
-    full.push_str(prefix);
-    full.push_str(input);
-    full.push_str(inner_after_input);
-    full.push_str(suffix);
-    LinkedChars::from_iter(full.chars())
-}
-
 pub fn evaluate_scope(
     scope: String,
     parent_interpreter: &Interpreter,
@@ -150,7 +135,7 @@ pub fn evaluate_scope(
         registers: vec![],
         functions: parent_interpreter.functions.clone(),
     };
-    let input_history = input_interpreter.evaluate()?;
+    input_interpreter.evaluate()?;
     let input = input_interpreter.state.make_string().trim().to_string();
 
     //3.5 If there is no :: we have a scope which  returns the processed input
@@ -158,17 +143,6 @@ pub fn evaluate_scope(
         Some(r) => r,
         None => return Ok((input_interpreter.state, input_interpreter.history)),
     };
-
-    let inner_after_input = &inner_content[input_string.len()..];
-    for state in input_history {
-        let input_state = state.make_string();
-        history.push(build_scope_state(
-            prefix,
-            &input_state,
-            inner_after_input,
-            suffix,
-        ));
-    }
 
     // 4. Split the rest into individual arms (separated by '||')
     let arms = split_all_at_top_level(&rest, "||")
@@ -229,12 +203,7 @@ pub fn evaluate_scope(
                 registers,
                 functions: parent_interpreter.functions.clone(),
             };
-            let output_history = output_interpreter.evaluate()?;
-            if output_history.is_empty() {
-                history.push(output_interpreter.state);
-            } else {
-                history.extend(output_history);
-            }
+            output_interpreter.evaluate()?;
 
             // Return the fully evaluated output state
             // We should put a wrapper around input and output history like { input => } and { => output }.

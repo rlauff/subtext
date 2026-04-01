@@ -114,6 +114,11 @@ fn find_closing_brace(
 // returns the register number and the index to the last digit
 // any non digit char can terminate the register call
 // (register number, idx_to_last_digit)
+// if the register call is terminated by a space, then we actually return the index to that space
+// to drop it as well
+// (by returning its index)
+// This way, we can do something like #1 1 to obtain <value of #1>1. Otherwise,
+// this would be impossible to get, because #11 doesnt work
 fn find_register_number(
     linked_chars: &LinkedChars,
     start_idx: usize,
@@ -128,7 +133,11 @@ fn find_register_number(
                 last_found_digit_idx = i;
             }
 
-            _ => {
+            c => {
+                // if the register call is terminated by a space, then we drop that space as well
+                if c == ' ' {
+                    last_found_digit_idx = i;
+                }
                 break;
             }
         }
@@ -184,6 +193,8 @@ fn find_function_name(
 // Example: here is a scope:  _{ foo : bar : no match }
 //                            ^start                  ^end
 // start points to the _, end point to the }
+// TODO: move the pointers inwards by one for scopes and functions. At the moment we manually
+// remove the braces anyway later
 fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, SubtextError> {
     let mut chars_buffer = Vec::new(); // Holds the read chars
 
@@ -216,6 +227,7 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                 let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Round)?;
 
                 // Use prev_idx to include the '(' itself in the extracted string
+                // TODO: edit here when moving the pointers inwards to exclude the braces
                 let full_string = linked_chars.interval_to_string(prev_idx, closing_brace_idx)?;
                 let name: String = chars_buffer.iter().collect();
 
@@ -223,13 +235,13 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                     "get_input" => Task::GetInput {
                         prompt: full_string,
                     },
+                    "get_file" => Task::GetFile { path: full_string },
                     "print_output" => Task::PrintOutput {
                         content: full_string,
                     },
                     "debug" => Task::Debug {
                         content: full_string,
                     },
-                    "get_file" => Task::GetFile { path: full_string },
                     other_name => Task::FunctionCall {
                         function_name: other_name.to_string(),
                         input: full_string,
@@ -301,21 +313,10 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                 // find the register which should be called
                 let (register_number, idx_to_terminating_char) =
                     find_register_number(linked_chars, i)?;
-                // if the terminating char is a space, then we point to the char after that
-                let end_idx =
-                    if let Some(next_node_idx) = linked_chars.get(idx_to_terminating_char).next {
-                        if linked_chars.get(next_node_idx).c == ' ' {
-                            next_node_idx
-                        } else {
-                            idx_to_terminating_char
-                        }
-                    } else {
-                        idx_to_terminating_char
-                    };
 
                 return Ok(Job {
                     start: oldest_uptick.unwrap_or(prev_idx),
-                    end: end_idx,
+                    end: idx_to_terminating_char,
                     task: Task::RegisterCall {
                         level: number_consecutive_uptick,
                         requested_index: register_number,
@@ -356,40 +357,11 @@ pub struct Function {
 }
 
 impl Interpreter<'_> {
-    fn apply_replacements(
-        &mut self,
-        start: usize,
-        end: usize,
-        replacements: Vec<LinkedChars>,
-        history: &mut Vec<LinkedChars>,
-    ) {
-        let base_state = self.state.clone();
-        let mut last_state: Option<LinkedChars> = None;
-        for replacement in replacements {
-            let mut new_state = base_state.clone();
-            new_state.replace_between(start, end, &replacement);
-            history.push(new_state.clone());
-            last_state = Some(new_state);
-        }
-
-        if let Some(state) = last_state {
-            self.state = state;
-        }
-    }
-
-    fn apply_removal(&mut self, start: usize, end: usize, history: &mut Vec<LinkedChars>) {
-        let mut new_state = self.state.clone();
-        new_state.remove_between(start, end);
-        history.push(new_state.clone());
-        self.state = new_state;
-    }
-
-    pub fn evaluate(&mut self) -> Result<Vec<LinkedChars>, SubtextError> {
+    pub fn evaluate(&mut self) -> Result<(), SubtextError> {
         // find jobs and apply the resp. changes until we get Chill back
         // After doing a Job, put the reading head at the start of the returned job.
         // This way, we read the output of the last evaluation back in immediately (for recursion).
         let mut reading_head = 0;
-        let mut history = Vec::new();
         loop {
             let job = match get_new_job(&self.state, reading_head) {
                 Ok(job) => job,
@@ -443,7 +415,7 @@ impl Interpreter<'_> {
                         name,
                         body: definition,
                     });
-                    self.apply_removal(job.start, job.end, &mut history);
+                    self.state.remove_between(job.start, job.end);
                 }
 
                 Task::FunctionCall {
@@ -453,21 +425,25 @@ impl Interpreter<'_> {
                     let found_function = self
                         .functions
                         .iter()
+                        .rev()  // iter in reverse as promised
                         .find(|func| func.name == function_name);
 
                     match found_function {
                         Some(function) => {
-                            let clean_input = if input.starts_with('(') && input.ends_with(')') {
-                                &input[1..input.len() - 1]
-                            } else {
-                                &input
-                            };
-
-                            let clean_body =
-                                if function.body.starts_with('{') && function.body.ends_with('}') {
-                                    &function.body[1..function.body.len() - 1]
+                            let trimmed_input = input.trim();
+                            let clean_input =
+                                if trimmed_input.starts_with('(') && trimmed_input.ends_with(')') {
+                                    &trimmed_input[1..trimmed_input.len() - 1]
                                 } else {
-                                    &function.body
+                                    trimmed_input
+                                };
+
+                            let trimmed_body = function.body.trim();
+                            let clean_body =
+                                if trimmed_body.starts_with('{') && trimmed_body.ends_with('}') {
+                                    &trimmed_body[1..trimmed_body.len() - 1]
+                                } else {
+                                    trimmed_body
                                 };
 
                             let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
@@ -519,7 +495,7 @@ impl Interpreter<'_> {
 
                     let clean_response = response.trim().to_string();
                     let ls = LinkedChars::from_iter(clean_response.chars());
-                    self.apply_replacements(job.start, job.end, vec![ls], &mut history);
+                    self.state.replace_between(job.start, job.end, ls);
                 }
 
                 Task::GetFile { path } => {
@@ -542,7 +518,7 @@ impl Interpreter<'_> {
 
                     let trimmed_content = file_content.trim().to_string();
                     let ls = LinkedChars::from_iter(trimmed_content.chars());
-                    self.state.replace_between(job.start, job.end, &ls);
+                    self.state.replace_between(job.start, job.end, ls);
                 }
 
                 Task::PrintOutput { content } => {
@@ -567,7 +543,7 @@ impl Interpreter<'_> {
                     }
 
                     println!("{}", inner_content);
-                    self.apply_removal(job.start, job.end, &mut history);
+                    self.state.remove_between(job.start, job.end);
                 }
 
                 Task::Debug { content } => {
@@ -615,7 +591,7 @@ impl Interpreter<'_> {
                 }
             }
         }
-        Ok(history)
+        Ok(())
     }
 
     fn get_register_at_level(
