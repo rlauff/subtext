@@ -1,15 +1,10 @@
-use crate::{interpreter::Interpreter, linked_chars::LinkedChars};
-
 use std::env;
 use std::fs;
 
-pub mod linked_chars;
-
-pub mod interpreter;
-
-pub mod scope;
-
-pub mod error;
+use subtext::{
+    error::{ErrorKind, SubtextError},
+    run_code_logic,
+};
 
 fn main() {
     let file_path = match env::args().nth(1) {
@@ -20,29 +15,22 @@ fn main() {
             return;
         }
     };
-    // Read String from the passed file
+
+    // String aus der übergebenen Datei lesen
     let input_string = match fs::read_to_string(&file_path) {
         Ok(content) => content,
         Err(err) => {
-            let io_error =
-                crate::error::SubtextError::new(crate::error::ErrorKind::FileReadError {
-                    path: file_path,
-                    reason: err.to_string(),
-                });
+            let io_error = SubtextError::new(ErrorKind::FileReadError {
+                path: file_path,
+                reason: err.to_string(),
+            });
             eprintln!("{}", io_error);
             return;
         }
     };
-    // create the root interpreter
-    let mut root_interpreter = Interpreter {
-        state: LinkedChars::from_iter(input_string.chars()),
-        registers: vec![],
-        functions: vec![],
-        parent: None,
-        history: None,
-    };
-    // evaluate it
-    if let Err(err) = root_interpreter.evaluate() {
+
+    // Rufe die zentrale Ausführungslogik aus der lib.rs auf
+    if let Err(err) = run_code_logic(input_string) {
         eprintln!("{}", err);
     }
 }

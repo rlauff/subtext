@@ -543,8 +543,7 @@ impl Interpreter<'_> {
                         interpreter.evaluate()?;
                         inner_content = interpreter.state.make_string();
                     }
-
-                    println!("{}", inner_content);
+                    crate::subtext_println!("{}", inner_content);
                     self.state.remove_between(job.start, job.end);
                 }
 

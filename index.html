@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subtext REPL</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            margin: 40px auto; 
+            max-width: 800px; /* Keeps the UI readable on large screens */
+        }
+        textarea { 
+            width: 100%; 
+            font-family: monospace; 
+            font-size: 14px; 
+            padding: 10px;
+            box-sizing: border-box; /* Prevents overflow */
+            resize: vertical; /* Allows the user to change the height */
+        }
+        #terminal { 
+            background: #1e1e1e; 
+            color: #4af626; 
+            padding: 15px; 
+            min-height: 250px;
+            font-family: monospace;
+            white-space: pre-wrap; /* Ensures newlines are respected */
+            box-sizing: border-box;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Subtext Interpreter REPL</h2>
+    
+    <textarea id="code-input" rows="10">def foo {
+    (....d) (......) => #2  #1
+ || (.....) (.oo...) => #2, #1
+}
+
+print_output(foo(world Hello,). foo(moon, Goodby))</textarea>
+    <br><br>
+    <button id="run-btn">Run Code</button>
+
+    <h3>Terminal:</h3>
+    <div id="terminal"></div>
+
+    <script type="module">
+        // Import the initialization function and the Rust execution function
+        // Note: Make sure the filename matches your actual package name (subtext.js)
+        import init, { run_wasm } from './pkg/subtext.js';
+
+        // 1. Define the global print function
+        // The Rust macro `subtext_println!` will call this exact function when compiled to Wasm.
+        window.subtextPrint = function(text) {
+            const terminal = document.getElementById('terminal');
+            // Append the incoming text and a newline to the terminal window
+            terminal.textContent += text + '\n';
+        };
+
+        async function start() {
+            // 2. Initialize the WebAssembly module
+            await init();
+
+            const runBtn = document.getElementById('run-btn');
+            const codeInput = document.getElementById('code-input');
+            const terminal = document.getElementById('terminal');
+
+            // 3. Set up the execution event
+            runBtn.addEventListener('click', () => {
+                // Clear the terminal for the new execution
+                terminal.textContent = '';
+                const code = codeInput.value;
+
+                try {
+                    // 4. Call the WebAssembly function
+                    // We only pass the code string. All outputs are automatically 
+                    // routed to window.subtextPrint by our custom Rust macro.
+                    run_wasm(code);
+                } catch (e) {
+                    // Catch and display any severe WebAssembly panics or errors
+                    window.subtextPrint(`\nCritical WebAssembly Error: ${e}`);
+                }
+            });
+        }
+
+        // Start the application setup
+        start();
+    </script>
+</body>
+</html>
