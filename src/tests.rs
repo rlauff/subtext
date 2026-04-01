@@ -122,8 +122,15 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "world hello, :: (.....) (......) => #2 #1!".to_string();
 
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "hello, world!");
+        assert_eq!(
+            evaluate_scope(scope, &parent)
+                .expect("Scope evaluation failed")
+                .last()
+                .unwrap()
+                .make_string()
+                .trim(),
+            "hello, world!"
+        );
     }
 
     #[test]
@@ -133,8 +140,15 @@ mod tests {
             "{ world hello, moon! :: (.....) (......) (.*) => #2 #1! { Goodby, :: (.*) => #1 ^#3 } }"
                 .to_string();
 
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "hello, world! Goodby, moon!");
+        assert_eq!(
+            evaluate_scope(scope, &parent)
+                .expect("Scope evaluation failed")
+                .last()
+                .unwrap()
+                .make_string()
+                .trim(),
+            "hello, world! Goodby, moon!"
+        );
     }
 
     // --- New Error Case Tests ---
