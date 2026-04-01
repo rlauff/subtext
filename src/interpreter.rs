@@ -3,7 +3,7 @@ use crate::linked_chars::LinkedChars;
 
 use crate::scope::evaluate_scope;
 
-use std::fs;
+use std::{fs, vec};
 use std::io::{self, Write};
 
 // An Interpreter gets passed a LinkedChars and is tasked to evaluate it until there are no further changes.
@@ -11,6 +11,7 @@ use std::io::{self, Write};
 // Its children may use the contents of these registers by using the ^ operator on register calls.
 pub struct Interpreter<'a> {
     pub state: LinkedChars,
+    pub history: Option<Vec<LinkedChars>>,
 
     // Example: { ab : (.)(.) : { ^$2 ^$1 : ba : it was ab; : it was not ab} }
     //          ^parent start   ^child start                                ^both end
@@ -67,6 +68,9 @@ enum Task {
     },
     GetFile {
         path: String,
+    },
+    Debug {
+        content: String,
     },
     Chill, // Nothing else to do, the interpreter can return
 }
@@ -220,6 +224,9 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                         prompt: full_string,
                     },
                     "print_output" => Task::PrintOutput {
+                        content: full_string,
+                    },
+                    "debug" => Task::Debug {
                         content: full_string,
                     },
                     "get_file" => Task::GetFile { path: full_string },
@@ -396,9 +403,20 @@ impl Interpreter<'_> {
 
                 Task::Scope { content: scope } => {
                     // evaluate the scope
-                    let results = evaluate_scope(scope, self)
+                    let result = evaluate_scope(scope, self, None)
                         .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
-                    self.apply_replacements(job.start, job.end, results, &mut history);
+
+                    //appends the scope history to the history vector
+                    if let Some(history) = self.history.as_mut() {
+                        for scope_history_state in result.1.unwrap_or_default() {
+                            let mut state_copy = self.state.clone();
+                            state_copy.replace_between(job.start, job.end, scope_history_state);
+                            history.push(state_copy);
+                        }
+                    }
+                    // modify the state
+                    self.state.replace_between(job.start, job.end, result.0);
+                    
                 }
 
                 Task::RegisterCall {
@@ -410,7 +428,12 @@ impl Interpreter<'_> {
                         .get_register_at_level(level, requested_index)
                         .map_err(|err| self.attach_backtrace_if_empty(err, Some(position)))?;
                     let result = LinkedChars::from_iter(register_value.chars());
-                    self.apply_replacements(job.start, job.end, vec![result], &mut history);
+                    self.state.replace_between(job.start, job.end, result);
+                    //TODO: maybe add history tracking here
+                    if let Some(history) = self.history.as_mut() {
+                        history.pop();
+                        history.push(self.state.clone())
+                    }
                 }
 
                 Task::DefineFunction { name, definition } => {
@@ -448,10 +471,19 @@ impl Interpreter<'_> {
                                 };
 
                             let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
-
-                            let results = evaluate_scope(scope, self)
+                            let result = evaluate_scope(scope, self, Some(&function_name))
                                 .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
-                            self.apply_replacements(job.start, job.end, results, &mut history);
+                            
+                            //appends the scope history to the history vector
+                            if let Some(history) = self.history.as_mut() {
+                                for scope_history_state in result.1.unwrap_or_default() {
+                                    let mut state_copy = self.state.clone();
+                                    state_copy.replace_between(job.start, job.end, scope_history_state);
+                                    history.push(state_copy);
+                                }
+                            }
+
+                            self.state.replace_between(job.start, job.end, result.0);
                         }
                         None => {
                             return Err(self.attach_backtrace_if_empty(
@@ -528,6 +560,7 @@ impl Interpreter<'_> {
                             registers: self.registers.clone(),
                             parent: self.parent,
                             functions: self.functions.clone(),
+                            history: None,
                         };
                         interpreter.evaluate()?;
                         inner_content = interpreter.state.make_string();
@@ -535,6 +568,50 @@ impl Interpreter<'_> {
 
                     println!("{}", inner_content);
                     self.apply_removal(job.start, job.end, &mut history);
+                }
+
+                Task::Debug { content } => {
+                    let mut inner_content = if content.starts_with('(') && content.ends_with(')') {
+                        content[1..content.len() - 1].to_string()
+                    } else {
+                        content
+                    };
+
+                    if !inner_content.starts_with('\'') {
+                        // in this case we evaluate first
+                        let lc = LinkedChars::from_iter(inner_content.chars());
+                        let lc_copy = lc.clone();
+                        let mut interpreter = Interpreter {
+                            state: lc,
+                            registers: self.registers.clone(),
+                            parent: self.parent,
+                            functions: self.functions.clone(),
+                            history: Some(vec![lc_copy]), // initialize history tracking
+                        };
+
+                        interpreter.evaluate()?;
+                        inner_content = interpreter.state.make_string();
+
+                        match interpreter.history.as_ref() {
+                            Some(history) => {
+                                println!("--- Debug History ---");
+                                for (i, state) in history.iter().enumerate() {
+                                    println!("Step {}: {}", i + 1, state.make_string());
+                                }
+                                println!("--- End of Debug History ---");
+                            }
+                            None => {
+                                return Err(self.attach_backtrace_if_empty(
+                                    SubtextError::new(ErrorKind::InternalInvariant {
+                                        message: "Debug task must have a history vec".to_string(),
+                                    }),
+                                    None,
+                                ));
+                            }
+                        }
+                    }
+
+                    self.state.remove_between(job.start, job.end);
                 }
             }
         }
@@ -804,6 +881,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(
@@ -822,6 +900,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string(), "hello, world!".to_string());
@@ -842,6 +921,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string(), "= > <".to_string());
@@ -855,6 +935,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         interpreter.evaluate().expect("Evaluation failed");
@@ -869,6 +950,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         interpreter.evaluate().expect("Evaluation failed");
@@ -883,6 +965,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -903,6 +986,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -919,6 +1003,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -935,6 +1020,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -955,6 +1041,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -971,6 +1058,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         interpreter.evaluate().expect("Evaluation failed");
@@ -985,6 +1073,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -1006,6 +1095,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();
@@ -1025,6 +1115,7 @@ mod tests {
             registers: vec![],
             functions: vec![],
             parent: None,
+            history: None,
         };
 
         let result = interpreter.evaluate();

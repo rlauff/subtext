@@ -32,6 +32,10 @@ def turing_step_not_halted {
         }  
 }
 
+def print_and_return {
+    (.*) => print_output(#1)#1
+}
+
 def turing_step {
     (\d+) (.*) => { ^#1 :: 0 => ^#2 || (\d+) => turing_step(turing_step_not_halted(^^^#1  ^^^#2))}
 }
@@ -48,4 +52,4 @@ def test {
 
 print_output(turing_step_not_halted(3 0 0 & 1 1 1 1 1 1 1))
 
-print_output(start_turing(9))
+debug(start_turing(9))

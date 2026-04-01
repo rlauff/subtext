@@ -63,6 +63,7 @@ fn main() {
         registers: vec![],
         functions: vec![],
         parent: None,
+        history: None,
     };
     // evaluate it
     match root_interpreter.evaluate() {
