@@ -94,6 +94,8 @@ impl LinkedChars {
         self.arena[0].next.is_none()
     }
 
+    // note that the get functions are unchecked. We ensure correctness by only ever calling with
+    // confirmed valid indices (e.g., from enumerate_with_start or from the return value of push operations).
     pub fn get(&self, idx: usize) -> &CharNode {
         &self.arena[idx]
     }
@@ -112,7 +114,12 @@ impl LinkedChars {
 
     // Replaces the sequence of nodes after start_idx up to and including end_idx
     // with the contents of another LinkedChars object.
-    pub fn replace_between(&mut self, start_idx: usize, end_idx: usize, linked_chars: LinkedChars) {
+    pub fn replace_between(
+        &mut self,
+        start_idx: usize,
+        end_idx: usize,
+        linked_chars: &LinkedChars,
+    ) {
         // If the new content is empty, this is equivalent to simply removing the interval
         if linked_chars.is_empty() {
             self.remove_between(start_idx, end_idx);
@@ -300,7 +307,7 @@ mod tests {
 
         // Replace 'i' (node 2) with "ello".
         // start_idx is 1 ('h'), end_idx is 2 ('i').
-        lc.replace_between(1, 2, replacement);
+        lc.replace_between(1, 2, &replacement);
 
         // Since we pushed 4 new nodes to the arena, the last node index is 2 + 4 = 6.
         let result = lc
@@ -319,7 +326,7 @@ mod tests {
 
         // Replacing "elet" (nodes 2,3,4,5) with nothing should act like remove_between.
         // start_idx: 1 ('d'), end_idx: 5 ('t'). Next node is 6 ('e').
-        lc.replace_between(1, 5, empty_replacement);
+        lc.replace_between(1, 5, &empty_replacement);
 
         let result = lc
             .interval_to_string(0, 6)
