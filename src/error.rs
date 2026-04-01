@@ -177,10 +177,10 @@ impl fmt::Display for SubtextError {
             }
             ErrorKind::UndefinedFunction { name } => {
                 writeln!(f, "Runtime Error: Call to undefined function '{}'.", name)?;
-                if let Some(frame) = self.backtrace.first() {
-                    if !frame.defined_functions.is_empty() {
-                        writeln!(f, "Known functions here: {:?}", frame.defined_functions)?;
-                    }
+                if let Some(frame) = self.backtrace.first()
+                    && !frame.defined_functions.is_empty()
+                {
+                    writeln!(f, "Known functions here: {:?}", frame.defined_functions)?;
                 }
             }
             ErrorKind::InvalidRegex { pattern, reason } => {

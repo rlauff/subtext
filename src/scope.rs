@@ -15,9 +15,7 @@ fn split_once_at_top_level(
     let mut stack: Vec<(char, usize)> = Vec::new();
     let mut i = 0;
 
-    while i < input.len() {
-        let c = input[i..].chars().next().unwrap(); // Safe because i < input.len()
-
+    for (i, c) in input.char_indices() {
         match c {
             '{' | '(' => stack.push((c, i)),
             '}' | ')' => {
@@ -42,7 +40,6 @@ fn split_once_at_top_level(
             _ => {}
         }
         // Advance the index by the byte length of the current UTF-8 character
-        i += c.len_utf8();
     }
 
     if let Some((open, pos)) = stack.last() {
