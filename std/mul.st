@@ -43,6 +43,6 @@ def mul {
     (\d*)\*(\d*) => sum(mul_to_sum(^^#1*^^#2))
 }
 
-print_output(mul_with_digit(2*3))
-print_output(mul(113*2312))
+//debug(mul_with_digit(2*3))
+debug(add(247834+4672364))
 

@@ -39,6 +39,7 @@ fn main() {
         registers: vec![],
         functions: vec![],
         parent: None,
+        history: None,
     };
     // evaluate it
     if let Err(err) = root_interpreter.evaluate() {

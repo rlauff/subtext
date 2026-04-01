@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::error::{ErrorKind, SubtextError};
 use crate::interpreter::*;
 use crate::linked_chars::*;
@@ -109,7 +111,8 @@ fn split_all_at_top_level(input: &str, delimiter: &str) -> Result<Vec<String>, S
 pub fn evaluate_scope(
     scope: String,
     parent_interpreter: &Interpreter,
-) -> Result<LinkedChars, SubtextError> {
+    function_name: Option<&str>,
+) -> Result<(LinkedChars, Option<Vec<LinkedChars>>), SubtextError> {
     let trimmed_scope = scope.trim();
 
     // 1. Safely remove the outermost braces.
@@ -124,8 +127,10 @@ pub fn evaluate_scope(
         .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
 
     // 3. Evaluate the input string until there are no further changes
+    let input_state = LinkedChars::from_iter(input_string.chars());
     let mut input_interpreter = Interpreter {
-        state: LinkedChars::from_iter(input_string.chars()),
+        history: parent_interpreter.history.as_ref().map(|_| vec![input_state.clone()]),
+        state: input_state,
         parent: Some(parent_interpreter),
         registers: vec![],
         functions: parent_interpreter.functions.clone(),
@@ -136,7 +141,7 @@ pub fn evaluate_scope(
     //3.5 If there is no :: we have a scope which  returns the processed input
     let rest = match rest {
         Some(r) => r,
-        None => return Ok(input_interpreter.state),
+        None => return Ok((input_interpreter.state, input_interpreter.history)),
     };
 
     // 4. Split the rest into individual arms (separated by '||')
@@ -190,8 +195,10 @@ pub fn evaluate_scope(
                 .collect();
 
             // 7. Evaluate the output since we have a successful match
+            let output_state = LinkedChars::from_iter(output_string.chars());
             let mut output_interpreter = Interpreter {
-                state: LinkedChars::from_iter(output_string.chars()),
+                history: parent_interpreter.history.as_ref().map(|_| vec![output_state.clone()]),
+                state: output_state,
                 parent: Some(parent_interpreter),
                 registers,
                 functions: parent_interpreter.functions.clone(),
@@ -199,7 +206,29 @@ pub fn evaluate_scope(
             output_interpreter.evaluate()?;
 
             // Return the fully evaluated output state
-            return Ok(output_interpreter.state);
+            // We should put a wrapper around input and output history like { input => } and { => output }.
+            match input_interpreter.history.as_ref() {
+                Some (input_history) => match output_interpreter.history.as_ref() {
+                    Some (output_history) => {
+                        let mut combined_history = input_history.clone().into_iter().map(|state| {
+                            let to_string = match function_name {
+                                Some(name) => format!("{}( {} )", name, state.make_string().trim()),
+                                None => format!("{{ {} => }}", state.make_string().trim()),
+                            };
+                            LinkedChars::from_iter(to_string.chars())
+                        }).collect::<Vec<LinkedChars>>();
+                        combined_history.extend(output_history.clone());
+                        return Ok((output_interpreter.state, Some(combined_history)));
+                    },
+                    // this None case should never happen
+                    None => return Err(parent_interpreter.attach_backtrace_without_highlight(SubtextError::new(
+                        ErrorKind::InternalInvariant {
+                            message: "missing history in output interpreter".to_string(),
+                        },
+                    ))),
+                },
+                None => return Ok((output_interpreter.state, None))
+            }
         }
     }
 
@@ -229,6 +258,7 @@ mod tests {
             parent: None,
             registers: vec![],
             functions: vec![],
+            history: None,
         }
     }
 
@@ -236,16 +266,16 @@ mod tests {
     fn test_new_syntax_simple_match() {
         let parent = dummy_interpreter();
         let scope = "{ hello :: hello => world }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "world");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "world");
     }
 
     #[test]
     fn test_new_syntax_multiple_arms() {
         let parent = dummy_interpreter();
         let scope = "{ test :: foo => bad || test => success }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "success");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "success");
     }
 
     #[test]
@@ -253,8 +283,8 @@ mod tests {
         let parent = dummy_interpreter();
         // Inner evaluates to "b". Outer matches "b" and outputs "c".
         let scope = "{ { a :: a => b } :: b => c }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "c");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "c");
     }
 
     // --- Complex Regex Tests (Testing the advantage of the new syntax) ---
@@ -266,8 +296,8 @@ mod tests {
         // Input: "12:30". Regex: "(?:12|24):[0-5][0-9]".
         // With the old single colon syntax, this would have broken the parser immediately!
         let scope = "{ 12:30 :: (?:12|24):[0-5][0-9] => match_time }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "match_time");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "match_time");
     }
 
     #[test]
@@ -276,16 +306,16 @@ mod tests {
         // The regex uses `|` (OR operator). Our arm separator is `||`.
         // We want to make sure a single `|` in the regex doesn't accidentally trigger an arm split.
         let scope = "{ apple :: banana|apple => fruit || dog|cat => animal }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "fruit");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "fruit");
     }
 
     #[test]
     fn test_evaluate_with_register_call() {
         let parent = dummy_interpreter();
         let scope = "{ world hello, :: (.....) (......) => #2  #1! }".to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "hello, world!");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "hello, world!");
     }
 
     #[test]
@@ -294,8 +324,8 @@ mod tests {
         let scope =
             "{ world hello, moon! :: (.....) (......) (.*) => #2  #1! { Goodby, :: (.*) => #1  ^#3 } }"
                 .to_string();
-        let result = evaluate_scope(scope, &parent).expect("Scope evaluation failed");
-        assert_eq!(result.make_string().trim(), "hello, world! Goodby, moon!");
+        let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
+        assert_eq!(result.0.make_string().trim(), "hello, world! Goodby, moon!");
     }
 
     // --- Error Case Tests ---
@@ -304,7 +334,7 @@ mod tests {
     fn test_no_match_returns_error() {
         let parent = dummy_interpreter();
         let scope = "{ input :: unknown => output }".to_string();
-        let result = evaluate_scope(scope, &parent);
+        let result = evaluate_scope(scope, &parent, None);
         assert!(result.is_err(), "Expected NoMatchingArm error");
         let err = result.unwrap_err();
         assert!(matches!(err.kind, ErrorKind::NoMatchingArm { .. }));
@@ -315,7 +345,7 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "{ input :: [ => output }".to_string();
 
-        let result = evaluate_scope(scope, &parent);
+        let result = evaluate_scope(scope, &parent, None);
 
         assert!(result.is_err(), "Expected InvalidRegex error");
         let err = result.unwrap_err();
@@ -327,7 +357,7 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "{ input :: ) => output }".to_string();
 
-        let result = evaluate_scope(scope, &parent);
+        let result = evaluate_scope(scope, &parent, None);
 
         assert!(result.is_err(), "Expected UnmatchedClosingBrace error");
         let err = result.unwrap_err();
@@ -339,7 +369,7 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "{ input :: (abc => output }".to_string();
 
-        let result = evaluate_scope(scope, &parent);
+        let result = evaluate_scope(scope, &parent, None);
 
         assert!(result.is_err(), "Expected UnmatchedOpeningBrace error");
         let err = result.unwrap_err();
@@ -351,7 +381,7 @@ mod tests {
         let parent = dummy_interpreter();
         // Second arm is missing the `=>` separator
         let scope = "{ a :: b => c || broken_arm_without_arrow }".to_string();
-        let result = evaluate_scope(scope, &parent);
+        let result = evaluate_scope(scope, &parent, None);
         assert!(result.is_err(), "Expected MalformedArmMissingArrow error");
         let err = result.unwrap_err();
         assert!(matches!(
