@@ -3,8 +3,8 @@ use crate::linked_chars::LinkedChars;
 
 use crate::scope::evaluate_scope;
 
-use std::{fs, vec};
 use std::io::{self, Write};
+use std::{fs, vec};
 
 // An Interpreter gets passed a LinkedChars and is tasked to evaluate it until there are no further changes.
 // It will save regex matches into its own registers.
@@ -382,13 +382,12 @@ impl Interpreter<'_> {
                     if let Some(history) = self.history.as_mut() {
                         for scope_history_state in result.1.unwrap_or_default() {
                             let mut state_copy = self.state.clone();
-                            state_copy.replace_between(job.start, job.end, scope_history_state);
+                            state_copy.replace_between(job.start, job.end, &scope_history_state);
                             history.push(state_copy);
                         }
                     }
                     // modify the state
-                    self.state.replace_between(job.start, job.end, result.0);
-                    
+                    self.state.replace_between(job.start, job.end, &result.0);
                 }
 
                 Task::RegisterCall {
@@ -400,7 +399,7 @@ impl Interpreter<'_> {
                         .get_register_at_level(level, requested_index)
                         .map_err(|err| self.attach_backtrace_if_empty(err, Some(position)))?;
                     let result = LinkedChars::from_iter(register_value.chars());
-                    self.state.replace_between(job.start, job.end, result);
+                    self.state.replace_between(job.start, job.end, &result);
                     //TODO: maybe add history tracking here
                     if let Some(history) = self.history.as_mut() {
                         history.pop();
@@ -449,17 +448,21 @@ impl Interpreter<'_> {
                             let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
                             let result = evaluate_scope(scope, self, Some(&function_name))
                                 .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
-                            
+
                             //appends the scope history to the history vector
                             if let Some(history) = self.history.as_mut() {
                                 for scope_history_state in result.1.unwrap_or_default() {
                                     let mut state_copy = self.state.clone();
-                                    state_copy.replace_between(job.start, job.end, scope_history_state);
+                                    state_copy.replace_between(
+                                        job.start,
+                                        job.end,
+                                        &scope_history_state,
+                                    );
                                     history.push(state_copy);
                                 }
                             }
 
-                            self.state.replace_between(job.start, job.end, result.0);
+                            self.state.replace_between(job.start, job.end, &result.0);
                         }
                         None => {
                             return Err(self.attach_backtrace_if_empty(
@@ -495,7 +498,7 @@ impl Interpreter<'_> {
 
                     let clean_response = response.trim().to_string();
                     let ls = LinkedChars::from_iter(clean_response.chars());
-                    self.state.replace_between(job.start, job.end, ls);
+                    self.state.replace_between(job.start, job.end, &ls);
                 }
 
                 Task::GetFile { path } => {
@@ -518,7 +521,7 @@ impl Interpreter<'_> {
 
                     let trimmed_content = file_content.trim().to_string();
                     let ls = LinkedChars::from_iter(trimmed_content.chars());
-                    self.state.replace_between(job.start, job.end, ls);
+                    self.state.replace_between(job.start, job.end, &ls);
                 }
 
                 Task::PrintOutput { content } => {

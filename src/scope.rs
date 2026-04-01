@@ -129,7 +129,10 @@ pub fn evaluate_scope(
     // 3. Evaluate the input string until there are no further changes
     let input_state = LinkedChars::from_iter(input_string.chars());
     let mut input_interpreter = Interpreter {
-        history: parent_interpreter.history.as_ref().map(|_| vec![input_state.clone()]),
+        history: parent_interpreter
+            .history
+            .as_ref()
+            .map(|_| vec![input_state.clone()]),
         state: input_state,
         parent: Some(parent_interpreter),
         registers: vec![],
@@ -197,7 +200,10 @@ pub fn evaluate_scope(
             // 7. Evaluate the output since we have a successful match
             let output_state = LinkedChars::from_iter(output_string.chars());
             let mut output_interpreter = Interpreter {
-                history: parent_interpreter.history.as_ref().map(|_| vec![output_state.clone()]),
+                history: parent_interpreter
+                    .history
+                    .as_ref()
+                    .map(|_| vec![output_state.clone()]),
                 state: output_state,
                 parent: Some(parent_interpreter),
                 registers,
@@ -208,26 +214,34 @@ pub fn evaluate_scope(
             // Return the fully evaluated output state
             // We should put a wrapper around input and output history like { input => } and { => output }.
             match input_interpreter.history.as_ref() {
-                Some (input_history) => match output_interpreter.history.as_ref() {
-                    Some (output_history) => {
-                        let mut combined_history = input_history.clone().into_iter().map(|state| {
-                            let to_string = match function_name {
-                                Some(name) => format!("{}( {} )", name, state.make_string().trim()),
-                                None => format!("{{ {} => }}", state.make_string().trim()),
-                            };
-                            LinkedChars::from_iter(to_string.chars())
-                        }).collect::<Vec<LinkedChars>>();
+                Some(input_history) => match output_interpreter.history.as_ref() {
+                    Some(output_history) => {
+                        let mut combined_history = input_history
+                            .clone()
+                            .into_iter()
+                            .map(|state| {
+                                let to_string = match function_name {
+                                    Some(name) => {
+                                        format!("{}( {} )", name, state.make_string().trim())
+                                    }
+                                    None => format!("{{ {} => }}", state.make_string().trim()),
+                                };
+                                LinkedChars::from_iter(to_string.chars())
+                            })
+                            .collect::<Vec<LinkedChars>>();
                         combined_history.extend(output_history.clone());
                         return Ok((output_interpreter.state, Some(combined_history)));
-                    },
+                    }
                     // this None case should never happen
-                    None => return Err(parent_interpreter.attach_backtrace_without_highlight(SubtextError::new(
-                        ErrorKind::InternalInvariant {
-                            message: "missing history in output interpreter".to_string(),
-                        },
-                    ))),
+                    None => {
+                        return Err(parent_interpreter.attach_backtrace_without_highlight(
+                            SubtextError::new(ErrorKind::InternalInvariant {
+                                message: "missing history in output interpreter".to_string(),
+                            }),
+                        ));
+                    }
                 },
-                None => return Ok((output_interpreter.state, None))
+                None => return Ok((output_interpreter.state, None)),
             }
         }
     }
