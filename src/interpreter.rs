@@ -400,7 +400,6 @@ impl Interpreter<'_> {
                         .map_err(|err| self.attach_backtrace_if_empty(err, Some(position)))?;
                     let result = LinkedChars::from_iter(register_value.chars());
                     self.state.replace_between(job.start, job.end, &result);
-                    //TODO: maybe add history tracking here
                     if let Some(history) = self.history.as_mut() {
                         history.pop();
                         history.push(self.state.clone())
@@ -559,13 +558,13 @@ impl Interpreter<'_> {
                     if !inner_content.starts_with('\'') {
                         // in this case we evaluate first
                         let lc = LinkedChars::from_iter(inner_content.chars());
-                        let lc_copy = lc.clone();
+                        let lc_clone = lc.clone();
                         let mut interpreter = Interpreter {
                             state: lc,
                             registers: self.registers.clone(),
                             parent: self.parent,
                             functions: self.functions.clone(),
-                            history: Some(vec![lc_copy]), // initialize history tracking
+                            history: Some(vec![lc_clone]), // initialize history tracking
                         };
 
                         interpreter.evaluate()?;
