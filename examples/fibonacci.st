@@ -45,6 +45,7 @@ def sum_two_digits {
     || (\d?)                                             => #1
 }
 
+
 // adds two positive integers
 // Matches against Aa+Bb&cP
 // a and b are single digits,
@@ -52,8 +53,6 @@ def sum_two_digits {
 // P is the partial result (might not be there)
 // then we add a and be using the above helper function and build the next call to add
 // the other arms handle the cases where one side is empty
-
-
 
 def add {
         // Core addition for digits on both sides
@@ -75,12 +74,8 @@ def add {
     ||  (\d*)                           => #1
 }
 
-def sum {
-            (\d*)\+(\d*)\+(.*)        => sum(add(^^#1+^^#2)+^#3)  
-    ||      (\d+)\+(\d*)              => add(^#1+^#2)
-    ||      (\d*)                     => #1
-}
 
+// takes positive integers and checks if they are equal by comparing their digits from the right to the left
 def are_equal {
     (.*)(.)&(.*)(.)  => { ^#2^#4 :: 00|11|22|33|44|55|66|77|88|99 => are_equal(^^#1&^^#3) || => n }
     ||  .+&             => n
@@ -89,8 +84,8 @@ def are_equal {
 }
 
 // takes an integer and computes the the corresponding fibonacci number
-// the first match arm is uses as an initializer (matching the passed digit 
-// after that, we call with A&B&n&N 
+// the last match arm is uses as an initializer (matching the passed digit)
+// after that, we call with A B n N, where 
 // A and B are (Fib(n), Fib(n-1))
 // N is how many iterations should be performed in total
 
