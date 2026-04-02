@@ -104,7 +104,7 @@ def fibonacci {
    || (\d+)                   => fibonacci(1 1 1 ^#1)
 }
 
-print_output(fibonacci(get_input(Which fibonacci number should be computed?: )))
+print_output(fibonacci(25))
 
 
 
