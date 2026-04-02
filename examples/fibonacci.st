@@ -83,9 +83,9 @@ def sum {
 
 def are_equal {
     (.*)(.)&(.*)(.)  => { ^#2^#4 :: 00|11|22|33|44|55|66|77|88|99 => are_equal(^^#1&^^#3) || => n }
+    ||  .+&             => n
+    ||  &.+             => n 
     || &                => y
-    ||  .*&             => n
-    ||  &.*             => n 
 }
 
 // takes an integer and computes the the corresponding fibonacci number
