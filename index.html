@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Subtext REPL</title>
+    <title>Subtext Sandbox</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -25,12 +25,12 @@
             background-color: #e0e0e0;
         }
         textarea { 
-            width: 125%; 
+            width: 100%; 
             font-family: monospace; 
             font-size: 14px; 
             padding: 10px;
             box-sizing: border-box; 
-            resize: both; 
+            resize: vertical; 
         }
         #terminal { 
             background: #1e1e1e; 
@@ -52,7 +52,7 @@
 </head>
 <body>
 
-    <h2>Subtext Sandbox</h2>
+    <h2>Subtext Interpreter Sandbox</h2>
     
     <div id="examples-container">
         <strong style="margin-right: 10px;">Try an example:</strong>
@@ -70,12 +70,12 @@
 
         // 1. Global print function for the Rust macro
         window.subtextPrint = function(text) {
+            console.log("-> Rust möchte etwas ausgeben:", text);
             const terminal = document.getElementById('terminal');
             terminal.textContent += text + '\n';
         };
 
         // 2. Define your examples here (WITHOUT the .st extension)
-        // Ensure these files exist in the "examples" folder next to this HTML file.
         const exampleFiles = ["fibonacci"];
 
         function setupExampleButtons() {
@@ -120,12 +120,17 @@
 
             // Set up execution
             runBtn.addEventListener('click', () => {
+                console.log("1. Button wurde geklickt!");
                 terminal.textContent = ''; 
                 const code = codeInput.value;
+                console.log("2. Eingelesener Code lautet:\n", code);
 
                 try {
+                    console.log("3. Übergebe Code an WebAssembly...");
                     run_wasm(code);
+                    console.log("4. WebAssembly ist fertig durchgelaufen.");
                 } catch (e) {
+                    console.error("5. Fehler beim Ausführen gefangen:", e);
                     window.subtextPrint(`\nCritical WebAssembly Error: ${e}`);
                 }
             });
