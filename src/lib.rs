@@ -56,7 +56,7 @@ pub fn run_wasm(code: &str, print_callback: &Function) {
     match run_code_logic(code.to_string()) {
         Ok(_) => {}
         Err(err) => {
-            subtext_println!(&format!("Error: {}", err));
+            print(&format!("Error: {}", err));
         }
     }
 }
