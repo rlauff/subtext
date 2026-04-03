@@ -46,17 +46,13 @@ pub fn run_code_logic(input_string: String) -> Result<(), error::SubtextError> {
 }
 
 #[wasm_bindgen]
-pub fn run_wasm(code: &str, print_callback: &Function) {
-    let print = |text: &str| {
-        let this = JsValue::null();
-        let message = JsValue::from_str(text);
-        let _ = print_callback.call1(&this, &message);
-    };
-
+pub fn run_wasm(code: &str) {
+    // Führe die Interpreter-Logik mit dem übergebenen Code aus
     match run_code_logic(code.to_string()) {
-        Ok(_) => {}
+        Ok(_) => {} // Alles lief fehlerfrei durch, keine weitere Aktion nötig
         Err(err) => {
-            print(&format!("Error: {}", err));
+            // Nutze dein Makro, das auch schon bei print_output() reibungslos funktioniert!
+            subtext_println!("Error: {}", err);
         }
     }
 }
