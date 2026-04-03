@@ -318,7 +318,7 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
 
             '~' => {
                 chars_buffer.clear();
-                oldest_non_whitespace = None;
+                oldest_non_whitespace = Some(prev_idx);
                 oldest_uptick = None;
                 number_consecutive_uptick = 0;
             }
@@ -369,8 +369,11 @@ impl Interpreter<'_> {
             };
             reading_head = job.start; // always read the replacement back in 
             match job.task {
-                Task::Chill => break, // we are done
-
+                Task::Chill => {
+                    // strip ghost chars and collect garbage all at the same time
+                    // self.state.strip_ghost_char();
+                    break; // return
+                }
                 Task::Scope { content: scope } => {
                     // evaluate the scope
                     let result = evaluate_scope(scope, self, None)
@@ -916,9 +919,8 @@ mod tests {
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "ok");
     }
-
     #[test]
-    fn define_function_body_without_input_separator() {
+    fn function_call_using_ghost_char() {
         let lc = LinkedChars::from_iter("def f { (a) => ok } f(a)".chars());
         let mut interpreter = Interpreter {
             state: lc,

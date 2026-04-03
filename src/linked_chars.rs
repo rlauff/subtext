@@ -217,6 +217,30 @@ impl LinkedChars {
         }
     }
 
+    pub fn strip_ghost_char(&mut self) {
+        if self.is_empty() {
+            return;
+        }
+        // rebuild and ignore ghost char '~'
+        let mut new_arena = Vec::new();
+        for (i, (_, node)) in self.enumerate_with_start(0).enumerate() {
+            if node.c != '~' {
+                new_arena.push(CharNode {
+                    c: node.c,
+                    next: Some(i + 1), // link to the next node in the new arena
+                });
+            }
+        }
+        if let Some(node) = new_arena.last_mut() {
+            node.next = None
+        }; // last node should point to None
+        assert!(
+            !new_arena.is_empty(),
+            "After stripping ghost char, arena should not be empty"
+        );
+        self.arena = new_arena;
+    }
+
     // Returns an iterator that yields nodes starting AFTER the given start index.
     pub fn enumerate_with_start(&self, start: usize) -> LinkedCharsIter<'_> {
         LinkedCharsIter {
