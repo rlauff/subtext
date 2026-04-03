@@ -8,41 +8,42 @@
 // the example checks if a binary word is a palindrome. If the final tape is all BBBB, then its a palindrome
 
 def state_table {
-   START => q_start
-|| q_start 0 => q_f0 B R
-|| q_start 1 => q_f1 B R
-|| q_start B => HALT
-|| q_f0 0 => q_f0 0 R
-|| q_f0 1 => q_f0 1 R
-|| q_f0 B => q_c0 B L
-|| q_f1 0 => q_f1 0 R
-|| q_f1 1 => q_f1 1 R
-|| q_f1 B => q_c1 B L
-|| q_c0 0 => q_back B L
-|| q_c0 1 => HALT
-|| q_c0 B => HALT
-|| q_c1 1 => q_back B L
-|| q_c1 0 => HALT
-|| q_c1 B => HALT
-|| q_back 0 => q_back 0 L
-|| q_back 1 => q_back 1 L
-|| q_back B => q_start B R
+    START => q_start
+        || q_start 0 => q_f0 B R
+        || q_start 1 => q_f1 B R
+        || q_start B => HALT
+        || q_f0 0 => q_f0 0 R
+        || q_f0 1 => q_f0 1 R
+        || q_f0 B => q_c0 B L
+        || q_f1 0 => q_f1 0 R
+        || q_f1 1 => q_f1 1 R
+        || q_f1 B => q_c1 B L
+        || q_c0 0 => q_back B L
+        || q_c0 1 => HALT
+        || q_c0 B => HALT
+        || q_c1 1 => q_back B L
+        || q_c1 0 => HALT
+        || q_c1 B => HALT
+        || q_back 0 => q_back 0 L
+        || q_back 1 => q_back 1 L
+        || q_back B => q_start B R
 }
 
 def turing {
+    // extract the state, prefix A, symbols aroung the head a,b and suffix B
+    //  state  A   a   b  B
     (.+) (.*)(.)>(.)(.*) => { 
-//  state  A   a   b  B
-        state_table(^^#1  ^^#4) :: HALT => ^#2^#3^#4^#5 // just output, dont recurse
-                                ||  (.+) (.) (.) => turing({
-//                       new_state^    w   ^move
-            ^^#3&^^^#2&^^^#5 :: L&.+&.* => ^^#1  ^^^#2>^^^#3^^#2^^^#5
-//          move A     B              new_state A>awB
-// match against the dir to move and wether A or B are empty
-// if empty, we have to insert a B so that the reading head is never exposed on either side
-                            || L&.*&   => ^^#1  B>^^^#2^^^#3^^#2^^^#5
-                            || R&.*&.+ => ^^#1  ^^^#2^^^#3^^#2>^^^#5
-                            || R&.*&    => ^^#1  ^^^#2^^^#3^^#2>B
-        }) 
+        state_table(^^#1  ^^#4) :: HALT => ^#2^#3^#4^#5
+            ||  (.+) (.) (.) => turing({
+//      new_state^    w   ^move
+
+                    // match against the dir to move and wether A or B are empty
+                    // if empty, we have to insert a B so that the reading head is never exposed on either side
+                    ^^#3&^^^#2&^^^#5 :: L&.+&.* => ^^#1  ^^^#2>^^^#3^^#2^^^#5
+                    || L&.*&   => ^^#1  B>^^^#2^^^#3^^#2^^^#5
+                    || R&.*&.+ => ^^#1  ^^^#2^^^#3^^#2>^^^#5
+                    || R&.*&    => ^^#1  ^^^#2^^^#3^^#2>B
+                    }) 
     }
     || (.*) => turing(state_table(START) B>^#1) // initialize the call
 }

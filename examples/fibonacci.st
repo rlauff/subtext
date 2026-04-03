@@ -76,6 +76,7 @@ def add {
 
 
 // takes positive integers and checks if they are equal by comparing their digits from the right to the left
+
 def are_equal {
     (.*)(.)&(.*)(.)  => { ^#2^#4 :: 00|11|22|33|44|55|66|77|88|99 => are_equal(^^#1&^^#3) || => n }
     ||  .+&             => n
@@ -83,12 +84,12 @@ def are_equal {
     || &                => y
 }
 
+
 // takes an integer and computes the the corresponding fibonacci number
 // the last match arm is uses as an initializer (matching the passed digit)
 // after that, we call with A B n N, where 
 // A and B are (Fib(n), Fib(n-1))
 // N is how many iterations should be performed in total
-
 
 def fibonacci {
     (\d+) (\d+) (\d+) (\d+) => 

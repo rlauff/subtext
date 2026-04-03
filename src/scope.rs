@@ -13,7 +13,6 @@ fn split_once_at_top_level(
     delimiter: &str,
 ) -> Result<(String, Option<String>), SubtextError> {
     let mut stack: Vec<(char, usize)> = Vec::new();
-    let mut i = 0;
 
     for (i, c) in input.char_indices() {
         match c {
