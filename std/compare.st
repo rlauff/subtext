@@ -1,0 +1,35 @@
+
+// compare two numbers, return < > or = 
+
+def compare_digits {
+        00      => =
+    ||  0[1-9]  => <
+    ||  11      => =
+    ||  1[2-9]  => <
+    ||  22      => =
+    ||  2[3-9]  => <
+    ||  33      => =
+    ||  3[4-9]  => <
+    ||  44      => =
+    ||  4[5-9]  => <
+    ||  55      => =
+    ||  5[6-9]  => <
+    ||  66      => =
+    ||  6[7-9]  => <
+    ||  77      => =
+    ||  7[8-9]  => <
+    ||  88      => =
+    ||  8[9]    => <
+    ||  99      => =
+    ||          => > // we covered all cases where left <= right, so if we get here, left > right
+}
+
+def compare {
+        (\d*)&(\d*)$                    => compare(^#1&^#2=) // init with = state
+    ||  (\d*)(\d)&(\d*)(\d)([<,>,=])    => { 
+            compare_digits(^^#2^^#4)  :: (.) => compare(^^#1&^^#3{^^#1 :: ([<,>]) => #1 || = => ^^^#5 })
+        }
+    ||  &\d                             => <  // left number is empty, right is bigger 
+    ||  \d&                             => >  // right number is empty, left is bigger
+    ||  &([<,>,=])                      => #1 // numbers have the same length, return the current state
+}
