@@ -906,6 +906,29 @@ mod tests {
     }
 
     #[test]
+    fn define_and_call_functions_with_ghost_chars() {
+        let lc = LinkedChars::from_iter(
+            "def to_zeros {
+                1(.*) => 0~to_zeros(^#1)
+            ||       => }
+            def inc_bin {
+                (.*)0(1*) => #1~1~to_zeros(^#2)
+            ||  (1+)      => 1~to_zeros(^#1)
+            ||            => 1 }
+            inc_bin(1011)"
+                .chars(),
+        );
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+            history: None,
+        };
+        interpreter.evaluate().expect("Evaluation failed");
+        assert_eq!(interpreter.state.make_string().trim(), "1100".to_string());
+    }
+    #[test]
     fn define_function_with_newlines() {
         let lc = LinkedChars::from_iter("def\nadd_positive { a => ok } add_positive(a)".chars());
         let mut interpreter = Interpreter {
