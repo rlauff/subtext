@@ -421,58 +421,38 @@ impl Interpreter<'_> {
                     function_name,
                     input,
                 } => {
-                    let found_function = self
-                        .functions
-                        .iter()
-                        .rev()  // iter in reverse as promised
-                        .find(|func| func.name == function_name);
+                    let function = self.find_function_definition(function_name.clone())?;
 
-                    match found_function {
-                        Some(function) => {
-                            let trimmed_input = input.trim();
-                            let clean_input =
-                                if trimmed_input.starts_with('(') && trimmed_input.ends_with(')') {
-                                    &trimmed_input[1..trimmed_input.len() - 1]
-                                } else {
-                                    trimmed_input
-                                };
+                    let trimmed_input = input.trim();
+                    let clean_input =
+                        if trimmed_input.starts_with('(') && trimmed_input.ends_with(')') {
+                            &trimmed_input[1..trimmed_input.len() - 1]
+                        } else {
+                            trimmed_input
+                        };
 
-                            let trimmed_body = function.body.trim();
-                            let clean_body =
-                                if trimmed_body.starts_with('{') && trimmed_body.ends_with('}') {
-                                    &trimmed_body[1..trimmed_body.len() - 1]
-                                } else {
-                                    trimmed_body
-                                };
+                    let trimmed_body = function.body.trim();
+                    let clean_body = if trimmed_body.starts_with('{') && trimmed_body.ends_with('}')
+                    {
+                        &trimmed_body[1..trimmed_body.len() - 1]
+                    } else {
+                        trimmed_body
+                    };
 
-                            let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
-                            let result = evaluate_scope(scope, self, Some(&function_name))
-                                .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
+                    let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
+                    let result = evaluate_scope(scope, self, Some(&function_name))
+                        .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
 
-                            //appends the scope history to the history vector
-                            if let Some(history) = self.history.as_mut() {
-                                for scope_history_state in result.1.unwrap_or_default() {
-                                    let mut state_copy = self.state.clone();
-                                    state_copy.replace_between(
-                                        job.start,
-                                        job.end,
-                                        &scope_history_state,
-                                    );
-                                    history.push(state_copy);
-                                }
-                            }
-
-                            self.state.replace_between(job.start, job.end, &result.0);
-                        }
-                        None => {
-                            return Err(self.attach_backtrace_if_empty(
-                                SubtextError::new(ErrorKind::UndefinedFunction {
-                                    name: function_name,
-                                }),
-                                None,
-                            ));
+                    //appends the scope history to the history vector
+                    if let Some(history) = self.history.as_mut() {
+                        for scope_history_state in result.1.unwrap_or_default() {
+                            let mut state_copy = self.state.clone();
+                            state_copy.replace_between(job.start, job.end, &scope_history_state);
+                            history.push(state_copy);
                         }
                     }
+
+                    self.state.replace_between(job.start, job.end, &result.0);
                 }
 
                 Task::GetInput { prompt } => {
@@ -537,8 +517,8 @@ impl Interpreter<'_> {
                         let mut interpreter = Interpreter {
                             state: lc,
                             registers: self.registers.clone(),
-                            parent: self.parent,
-                            functions: self.functions.clone(),
+                            parent: Some(self),
+                            functions: vec![],
                             history: None,
                         };
                         interpreter.evaluate()?;
@@ -563,7 +543,7 @@ impl Interpreter<'_> {
                             state: lc,
                             registers: self.registers.clone(),
                             parent: self.parent,
-                            functions: self.functions.clone(),
+                            functions: vec![],
                             history: Some(vec![lc_clone]), // initialize history tracking
                         };
 
@@ -594,6 +574,29 @@ impl Interpreter<'_> {
             }
         }
         Ok(())
+    }
+
+    fn find_function_definition(&self, name: String) -> Result<&Function, SubtextError> {
+        let mut current_interpreter = self;
+        loop {
+            if let Some(func) = current_interpreter
+                .functions
+                .iter()
+                .find(|func| func.name == name)
+            {
+                return Ok(func);
+            }
+            if let Some(parent_ref) = current_interpreter.parent {
+                current_interpreter = parent_ref;
+            } else {
+                break;
+            }
+        }
+
+        Err(self.attach_backtrace_if_empty(
+            SubtextError::new(ErrorKind::UndefinedFunction { name }),
+            None,
+        ))
     }
 
     fn get_register_at_level(
@@ -928,6 +931,7 @@ mod tests {
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "1100".to_string());
     }
+
     #[test]
     fn define_function_with_newlines() {
         let lc = LinkedChars::from_iter("def\nadd_positive { a => ok } add_positive(a)".chars());
@@ -942,6 +946,7 @@ mod tests {
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "ok");
     }
+
     #[test]
     fn function_call_using_ghost_char() {
         let lc = LinkedChars::from_iter("def f { (a) => ok } f(a)".chars());
@@ -1137,5 +1142,23 @@ mod tests {
         assert!(result.is_err(), "Expected MissingParentScope error");
         let err = result.unwrap_err();
         assert!(matches!(err.kind, ErrorKind::MissingParentScope { .. }));
+    }
+
+    #[test]
+    fn function_lookup_in_parent() {
+        let lc = LinkedChars::from_iter(
+            "def swap { (.)(.) => #2#1 } def swap_back { (.)(.) => #2#1 } swap(swap_back(ab))"
+                .chars(),
+        );
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+            history: None,
+        };
+
+        interpreter.evaluate().expect("Evaluation failed");
+        assert_eq!(interpreter.state.make_string().trim(), "ab");
     }
 }

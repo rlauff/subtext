@@ -132,7 +132,7 @@ pub fn evaluate_scope(
         state: input_state,
         parent: Some(parent_interpreter),
         registers: vec![],
-        functions: parent_interpreter.functions.clone(),
+        functions: vec![],
     };
     input_interpreter.evaluate()?;
     let input = input_interpreter.state.make_string().trim().to_string();
@@ -203,7 +203,7 @@ pub fn evaluate_scope(
                 state: output_state,
                 parent: Some(parent_interpreter),
                 registers,
-                functions: parent_interpreter.functions.clone(),
+                functions: vec![],
             };
             output_interpreter.evaluate()?;
 
