@@ -1,3 +1,5 @@
+- Make meta programming possible (canonically without evil hacks)
+
 - make default implementation for Interpreter instead of writing all fields out explicitly everywhere
 
 - in general, the code could use a cleanup
@@ -12,8 +14,6 @@
     We could also write a garbage collector to fix this, but switching to ropey seems cleaner.
 
 - put tests into tests.rs 
-
-- add the step feature 
 
 - make website version and publish there
 
