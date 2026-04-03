@@ -83,7 +83,6 @@ struct Job {
 }
 
 // Finds the matching closing brace.
-// Expects start_idx to be the exact index of the opening brace.
 fn find_closing_brace(
     linked_chars: &LinkedChars,
     start_idx: usize,
@@ -114,11 +113,7 @@ fn find_closing_brace(
 // returns the register number and the index to the last digit
 // any non digit char can terminate the register call
 // (register number, idx_to_last_digit)
-// if the register call is terminated by a space, then we actually return the index to that space
-// to drop it as well
-// (by returning its index)
-// This way, we can do something like #1 1 to obtain <value of #1>1. Otherwise,
-// this would be impossible to get, because #11 doesnt work
+// when parsing #12~1, the tilde is not part of the register call, but the 2 is. So we return the index of the 2 here.
 fn find_register_number(
     linked_chars: &LinkedChars,
     start_idx: usize,
@@ -134,8 +129,8 @@ fn find_register_number(
             }
 
             c => {
-                // if the register call is terminated by a space, then we drop that space as well
-                if c == ' ' {
+                if c == '~' {
+                    // ignore the ghost char ~ (it exists to make #1~1 => <val of #1>1 work)
                     last_found_digit_idx = i;
                 }
                 break;
@@ -226,8 +221,7 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                 // This is a function call. Find the closing brace.
                 let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Round)?;
 
-                // Use prev_idx to include the '(' itself in the extracted string
-                // TODO: edit here when moving the pointers inwards to exclude the braces
+                // changed prev_idx to i so that we do not include the leading brace anymore
                 let full_string = linked_chars.interval_to_string(prev_idx, closing_brace_idx)?;
                 let name: String = chars_buffer.iter().collect();
 
@@ -258,9 +252,6 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
             '{' => {
                 // this is a scope
                 let closing_brace_idx = find_closing_brace(linked_chars, i, Brace::Curly)?;
-                // Use prev_idx to include the '{' itself in the extracted string
-                // TODO: In the scope evaluation, the braces are striped away anyway
-                // we could just not put them in at all
                 let full_string = linked_chars.interval_to_string(prev_idx, closing_brace_idx)?;
 
                 return Ok(Job {
@@ -323,6 +314,13 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                         position: i,
                     },
                 });
+            }
+
+            '~' => {
+                chars_buffer.clear();
+                oldest_non_whitespace = None;
+                oldest_uptick = None;
+                number_consecutive_uptick = 0;
             }
 
             c => {
@@ -1028,8 +1026,23 @@ mod tests {
     }
 
     #[test]
-    fn test_register_call_trailing_whitespace_is_ignored() {
+    fn test_register_call_trailing_whitespace_is_not_ignored() {
         let lc = LinkedChars::from_iter("{ a :: (a) => #1 1 }".chars());
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+            history: None,
+        };
+
+        interpreter.evaluate().expect("Evaluation failed");
+        assert_eq!(interpreter.state.make_string().trim(), "a 1");
+    }
+
+    #[test]
+    fn test_register_calling_ghost_char() {
+        let lc = LinkedChars::from_iter("{ a :: (a) => #1~1 }".chars());
         let mut interpreter = Interpreter {
             state: lc,
             registers: vec![],

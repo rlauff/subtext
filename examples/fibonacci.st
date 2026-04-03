@@ -41,7 +41,7 @@ def sum_two_digits {
     || 79|88|97                                          => 6c    
     || 89|98                                             => 7c    
     || 99                                                => 8c    
-    || (\d?)c                                            => sum_two_digits(1#1)
+    || (\d?)c                                            => sum_two_digits(1^#1)
     || (\d?)                                             => #1
 }
 
@@ -95,7 +95,7 @@ def fibonacci {
     (\d+) (\d+) (\d+) (\d+) => 
     {
         are_equal(^^#3&^^#4)    ::  y     => ^#1 
-                                ||  n     => fibonacci(add(^^^#1+^^^#2) ^^#1  add(^^^#3+1) ^^#4)
+                                ||  n     => fibonacci(add(^^^#1+^^^#2) ^^#1 add(^^^#3+1) ^^#4)
     }
    || (\d+)                   => fibonacci(1 1 1 ^#1)
 }

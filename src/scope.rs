@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn test_evaluate_with_register_call() {
         let parent = dummy_interpreter();
-        let scope = "{ world hello, :: (.....) (......) => #2  #1! }".to_string();
+        let scope = "{ world hello, :: (.....) (......) => #2 #1! }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
         assert_eq!(result.0.make_string().trim(), "hello, world!");
     }
@@ -332,7 +332,7 @@ mod tests {
     fn test_evaluate_with_register_call_nested() {
         let parent = dummy_interpreter();
         let scope =
-            "{ world hello, moon! :: (.....) (......) (.*) => #2  #1! { Goodby, :: (.*) => #1  ^#3 } }"
+            "{ world hello, moon! :: (.....) (......) (.*) => #2 #1! { Goodby, :: (.*) => #1 ^#3 } }"
                 .to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
         assert_eq!(result.0.make_string().trim(), "hello, world! Goodby, moon!");

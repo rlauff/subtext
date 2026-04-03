@@ -33,16 +33,16 @@ def turing {
     // extract the state, prefix A, symbols aroung the head a,b and suffix B
     //  state  A   a   b  B
     (.+) (.*)(.)>(.)(.*) => { 
-        state_table(^^#1  ^^#4) :: HALT => ^#2^#3^#4^#5
+        state_table(^^#1 ^^#4) :: HALT => ^#2^#3^#4^#5
             ||  (.+) (.) (.) => turing({
 //      new_state^    w   ^move
 
                     // match against the dir to move and wether A or B are empty
                     // if empty, we have to insert a B so that the reading head is never exposed on either side
-                    ^^#3&^^^#2&^^^#5 :: L&.+&.* => ^^#1  ^^^#2>^^^#3^^#2^^^#5
-                    || L&.*&   => ^^#1  B>^^^#2^^^#3^^#2^^^#5
-                    || R&.*&.+ => ^^#1  ^^^#2^^^#3^^#2>^^^#5
-                    || R&.*&    => ^^#1  ^^^#2^^^#3^^#2>B
+                    ^^#3&^^^#2&^^^#5 :: L&.+&.* => ^^#1 ^^^#2>^^^#3^^#2^^^#5
+                    || L&.*&   => ^^#1 B>^^^#2^^^#3^^#2^^^#5
+                    || R&.*&.+ => ^^#1 ^^^#2^^^#3^^#2>^^^#5
+                    || R&.*&   => ^^#1 ^^^#2^^^#3^^#2>B
                     }) 
     }
     || (.*) => turing(state_table(START) B>^#1) // initialize the call
