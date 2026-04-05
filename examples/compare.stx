@@ -36,3 +36,4 @@ def compare {
 print_output(compare(1234&1235)) // <
 print_output(compare(1234&1234)) // =
 print_output(compare(1235&1234)) // >
+print_output(compare(999&1000))  // <
