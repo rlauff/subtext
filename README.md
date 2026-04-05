@@ -3,12 +3,15 @@
 Subtext is a regex-based, purely functional esoteric programming language; basically, it is a text rewriting system.
 
 This repo contains an interpreter written in Rust. A Wasm web version can be accessed through [this link](https://page.math.tu-berlin.de/~lauff/subtext/index.html).
+To run locally, clone this repository and run with 
 
-See below for examples, including Fibonacci numbers and Turing machines.
+`cargo run --release -- <path to .stx file>`
 
 ---
 
 ## Documentation
+
+See below for examples, including Fibonacci numbers and Turing machines.
 
 ### Scopes
 The main component of Subtext is a "scope". In its most basic form, it consists of three parts:
