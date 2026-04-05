@@ -48,5 +48,5 @@ def turing {
     || (.*) => turing(state_table(START) B>^#1) // initialize the call
 }
 
-
 print_output(turing(1011001))
+print_output(turing(1011101))

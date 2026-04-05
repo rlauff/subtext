@@ -76,7 +76,7 @@
         };
 
         // 2. Define your examples here (WITHOUT the .st extension)
-        const exampleFiles = ["fibonacci", "turing"];
+        const exampleFiles = ["binary_increment", "compare", "turing", "fibonacci"];
 
         function setupExampleButtons() {
             const container = document.getElementById('examples-container');
@@ -88,10 +88,10 @@
 
                 btn.addEventListener('click', async () => {
                     try {
-                        const response = await fetch(`examples/${fileName}.st`);
+                        const response = await fetch(`examples/${fileName}.stx`);
                         
                         if (!response.ok) {
-                            throw new Error(`Server returned ${response.status}: Could not find ${fileName}.st`);
+                            throw new Error(`Server returned ${response.status}: Could not find ${fileName}.stx`);
                         }
                         
                         const codeText = await response.text();
