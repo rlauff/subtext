@@ -41,7 +41,7 @@ pub fn run_code_logic(input_string: String) -> Result<(), error::SubtextError> {
         history: None,
     };
 
-    root_interpreter.evaluate()
+    root_interpreter.evaluate().map(|_| ())
 }
 
 #[wasm_bindgen]

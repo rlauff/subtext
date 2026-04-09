@@ -12,9 +12,9 @@ enum TokenType {
     RegisterCall,
     Comment,
     GhostChar,
-    Input,
+    //   Input,
     Pattern,
-    Output,
+    //   Output,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,9 +38,9 @@ impl TokenType {
             TokenType::RegisterCall => 7,
             TokenType::Comment => 8,
             TokenType::GhostChar => 9,
-            TokenType::Input => 10,
+            //            TokenType::Input => 10,
             TokenType::Pattern => 11,
-            TokenType::Output => 12,
+            //           TokenType::Output => 12,
         }
     }
 }

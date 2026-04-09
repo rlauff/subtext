@@ -108,8 +108,9 @@ pub fn evaluate_scope(
     scope: String,
     parent_interpreter: &Interpreter,
     function_name: Option<&str>,
-) -> Result<(LinkedChars, Option<Vec<LinkedChars>>), SubtextError> {
+) -> Result<(LinkedChars, Option<Vec<LinkedChars>>, Vec<Function>), SubtextError> {
     let trimmed_scope = scope.trim();
+    let mut function_to_define_in_parent = Vec::new();
 
     // 1. Safely remove the outermost braces.
     let inner_content = if trimmed_scope.starts_with('{') && trimmed_scope.ends_with('}') {
@@ -134,13 +135,19 @@ pub fn evaluate_scope(
         registers: vec![],
         functions: vec![],
     };
-    input_interpreter.evaluate()?;
+    function_to_define_in_parent.extend(input_interpreter.evaluate()?);
     let input = input_interpreter.state.make_string().trim().to_string();
 
     //3.5 If there is no :: we have a scope which  returns the processed input
     let rest = match rest {
         Some(r) => r,
-        None => return Ok((input_interpreter.state, input_interpreter.history)),
+        None => {
+            return Ok((
+                input_interpreter.state,
+                input_interpreter.history,
+                function_to_define_in_parent,
+            ));
+        }
     };
 
     // 4. Split the rest into individual arms (separated by '||')
@@ -205,7 +212,7 @@ pub fn evaluate_scope(
                 registers,
                 functions: vec![],
             };
-            output_interpreter.evaluate()?;
+            function_to_define_in_parent.extend(output_interpreter.evaluate()?);
 
             // Return the fully evaluated output state
             // We should put a wrapper around input and output history like { input => } and { => output }.
@@ -226,7 +233,11 @@ pub fn evaluate_scope(
                             })
                             .collect::<Vec<LinkedChars>>();
                         combined_history.extend(output_history.clone());
-                        return Ok((output_interpreter.state, Some(combined_history)));
+                        return Ok((
+                            output_interpreter.state,
+                            Some(combined_history),
+                            function_to_define_in_parent,
+                        ));
                     }
                     // this None case should never happen
                     None => {
@@ -237,7 +248,7 @@ pub fn evaluate_scope(
                         ));
                     }
                 },
-                None => return Ok((output_interpreter.state, None)),
+                None => return Ok((output_interpreter.state, None, function_to_define_in_parent)),
             }
         }
     }

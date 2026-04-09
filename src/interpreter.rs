@@ -55,6 +55,10 @@ enum Task {
         name: String,
         definition: String,
     },
+    DefineFunctionInParent {
+        name: String,
+        definition: String,
+    },
     RegisterCall {
         level: usize,
         requested_index: usize,
@@ -265,7 +269,7 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
 
             c if c.is_whitespace() => {
                 let name: String = chars_buffer.iter().collect();
-                if name == "def" {
+                if name == "def" || name == "^def" {
                     let (function_name, opening_brace_prev, opening_brace_idx) =
                         find_function_name(linked_chars, i)?;
                     let closing_brace_idx =
@@ -274,14 +278,21 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                     // Extract everything including the braces
                     let definition_string =
                         linked_chars.interval_to_string(opening_brace_prev, closing_brace_idx)?;
-
+                    let task = if name == "def" {
+                        Task::DefineFunction {
+                            name: function_name,
+                            definition: definition_string,
+                        }
+                    } else {
+                        Task::DefineFunctionInParent {
+                            name: function_name,
+                            definition: definition_string,
+                        }
+                    };
                     return Ok(Job {
                         start: oldest_non_whitespace.unwrap_or(0),
                         end: closing_brace_idx,
-                        task: Task::DefineFunction {
-                            name: function_name,
-                            definition: definition_string,
-                        },
+                        task,
                     });
                 } else {
                     // Reset the buffer and start marker if we hit whitespace and it wasn't 'def'
@@ -296,6 +307,10 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                 number_consecutive_uptick += 1;
                 if oldest_uptick.is_none() {
                     oldest_uptick = Some(prev_idx);
+                };
+                chars_buffer.push('^');
+                if oldest_non_whitespace.is_none() {
+                    oldest_non_whitespace = Some(prev_idx);
                 }
             }
 
@@ -348,18 +363,20 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
     })
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Function {
     name: String,
     body: String,
 }
 
 impl Interpreter<'_> {
-    pub fn evaluate(&mut self) -> Result<(), SubtextError> {
+    // now we return a vec of function to be defined in the parent scope in the ok case
+    pub fn evaluate(&mut self) -> Result<Vec<Function>, SubtextError> {
         // find jobs and apply the resp. changes until we get Chill back
         // After doing a Job, put the reading head at the start of the returned job.
         // This way, we read the output of the last evaluation back in immediately (for recursion).
         let mut reading_head = 0;
+        let mut functions_to_define_in_parent = Vec::new();
         loop {
             let job = match get_new_job(&self.state, reading_head) {
                 Ok(job) => job,
@@ -389,6 +406,7 @@ impl Interpreter<'_> {
                     }
                     // modify the state
                     self.state.replace_between(job.start, job.end, &result.0);
+                    self.functions.extend(result.2);
                 }
 
                 Task::RegisterCall {
@@ -412,6 +430,24 @@ impl Interpreter<'_> {
                     // This way a new definition will shadow a potential old one
                     self.functions.push(Function {
                         name,
+                        body: definition,
+                    });
+                    self.state.remove_between(job.start, job.end);
+                }
+
+                Task::DefineFunctionInParent { name, definition } => {
+                    // eval the name and function body as scopes
+                    let mut name_interpreter = Interpreter {
+                        state: LinkedChars::from_iter(name.chars()),
+                        registers: self.registers.clone(),
+                        parent: Some(self),
+                        functions: vec![],
+                        history: None,
+                    };
+                    name_interpreter.evaluate()?;
+                    let clean_name = name_interpreter.state.make_string().trim().to_string();
+                    functions_to_define_in_parent.push(Function {
+                        name: clean_name,
                         body: definition,
                     });
                     self.state.remove_between(job.start, job.end);
@@ -453,6 +489,7 @@ impl Interpreter<'_> {
                     }
 
                     self.state.replace_between(job.start, job.end, &result.0);
+                    self.functions.extend(result.2);
                 }
 
                 Task::GetInput { prompt } => {
@@ -573,7 +610,7 @@ impl Interpreter<'_> {
                 }
             }
         }
-        Ok(())
+        Ok(functions_to_define_in_parent)
     }
 
     fn find_function_definition(&self, name: String) -> Result<&Function, SubtextError> {
@@ -1160,5 +1197,38 @@ mod tests {
 
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "ab");
+    }
+
+    #[test]
+    fn def_function_in_parent_via_scope() {
+        let lc = LinkedChars::from_iter("{ abc :: => ^def f { (.)(.) => #2#1 } } f(ba)".chars());
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+            history: None,
+        };
+
+        interpreter.evaluate().expect("Evaluation failed");
+        assert_eq!(interpreter.state.make_string().trim(), "ab");
+    }
+
+    #[test]
+    fn def_function_in_parent_via_function() {
+        let lc = LinkedChars::from_iter(
+            "def def_func { (.) => ^def #1 { (.)(.) => #2#1 } } def_func(f) f(ba) def_func(g) g(ab)"
+                .chars(),
+        );
+        let mut interpreter = Interpreter {
+            state: lc,
+            registers: vec![],
+            functions: vec![],
+            parent: None,
+            history: None,
+        };
+
+        interpreter.evaluate().expect("Evaluation failed");
+        assert_eq!(interpreter.state.make_string().trim(), "ab  ba");
     }
 }
