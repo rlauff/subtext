@@ -7,6 +7,9 @@ To run locally, clone this repository and run with
 
 `cargo run --release -- <path to .stx file>`
 
+The submodule lsp contains an lsp server providing semantic tokens. At the moment, users have to point their prefered editor by hand to the binary at
+`subtext/lsp/target/release/lsp`
+
 ---
 
 ## Documentation
