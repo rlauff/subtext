@@ -206,7 +206,18 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
 
     let mut number_consecutive_uptick = 0;
 
+    // anything inside protecting braces [] should be ignored here
+    let mut depth_protecting_braces: usize = 0;
+
     for (i, node) in linked_chars.enumerate_with_start(reader_idx) {
+        match node.c {
+            '[' => depth_protecting_braces += 1,
+            ']' => depth_protecting_braces = depth_protecting_braces.saturating_sub(1),
+            _ if depth_protecting_braces > 0 => {
+                continue;
+            } // ignore anything inside protecting braces
+            _ => {}
+        }
         match node.c {
             '(' => {
                 // Ignore stray parentheses if we haven't read a function name yet
@@ -370,8 +381,6 @@ impl Interpreter<'_> {
             reading_head = job.start; // always read the replacement back in 
             match job.task {
                 Task::Chill => {
-                    // strip ghost chars and collect garbage all at the same time
-                    // self.state.strip_ghost_char();
                     break; // return
                 }
                 Task::Scope { content: scope } => {
@@ -554,7 +563,7 @@ impl Interpreter<'_> {
                             Some(history) => {
                                 println!("--- Debug History ---");
                                 for (i, state) in history.iter().enumerate() {
-                                    println!("Step {}: {}", i + 1, state.make_string());
+                                    println!("\n\nStep {}: {}", i + 1, state.make_string());
                                 }
                                 println!("--- End of Debug History ---");
                             }

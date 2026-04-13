@@ -217,27 +217,38 @@ impl LinkedChars {
         }
     }
 
-    pub fn strip_ghost_char(&mut self) {
+    // rebuilds but ignores the outer layer of [] braces
+    // we intentionally allow negative depts to allow for meta programming things, like retuning ]
+    // as a part of the string which will later be combined with other parts
+    // this also acts as a garbage collector for returns of scopes
+    pub fn strip_outer_protection_layer(&mut self) {
         if self.is_empty() {
             return;
         }
-        // rebuild and ignore ghost char '~'
-        let mut new_arena = Vec::new();
-        for (i, (_, node)) in self.enumerate_with_start(0).enumerate() {
-            if node.c != '~' {
+
+        let mut depth: usize = 0; // depth into nested [] braces 
+        let mut new_arena = vec![CharNode {
+            c: '\0',
+            next: Some(1), // always point to the next node, which exists because we know the arena is not empty
+        }];
+
+        for (_, node) in self.enumerate_with_start(0) {
+            if node.c == ']' {
+                depth = depth.saturating_sub(1);
+            }
+            if (node.c != '[' && node.c != ']') || depth > 0 {
                 new_arena.push(CharNode {
                     c: node.c,
-                    next: Some(i + 1), // link to the next node in the new arena
+                    next: Some(new_arena.len() + 1), // point to the next node, which will be added in the next iteration
                 });
+            }
+            if node.c == '[' {
+                depth += 1;
             }
         }
         if let Some(node) = new_arena.last_mut() {
             node.next = None
         }; // last node should point to None
-        assert!(
-            !new_arena.is_empty(),
-            "After stripping ghost char, arena should not be empty"
-        );
         self.arena = new_arena;
     }
 
@@ -389,5 +400,13 @@ mod tests {
         let lc = LinkedChars::from_iter("hello world".chars());
         let snippet = lc.make_snippet(None, 5);
         assert_eq!(snippet, "hello");
+    }
+
+    #[test]
+    fn test_strip_outer_protection_layer() {
+        let mut lc = LinkedChars::from_iter("[a[b]c]".chars());
+        assert_eq!(lc.make_string(), "[a[b]c]");
+        lc.strip_outer_protection_layer();
+        assert_eq!(lc.make_string(), "a[b]c");
     }
 }

@@ -206,6 +206,8 @@ pub fn evaluate_scope(
                 functions: vec![],
             };
             output_interpreter.evaluate()?;
+            // strip outer layer of protecting braces before returning output
+            output_interpreter.state.strip_outer_protection_layer();
 
             // Return the fully evaluated output state
             // We should put a wrapper around input and output history like { input => } and { => output }.
