@@ -591,6 +591,7 @@ impl Interpreter<'_> {
             if let Some(func) = current_interpreter
                 .functions
                 .iter()
+                .rev() // iter in reverse to find the most recent definition first (for shadowing)
                 .find(|func| func.name == name)
             {
                 return Ok(func);

@@ -1,0 +1,27 @@
+// this file contains definitions for global memory management
+
+
+// call set_var(name=value) will define a function named get_var_name() that returns value
+// the function will be defined in the callers scope 
+// if you want to define a function in a higher scope, warp it in more layers of protection braces []
+
+def set_var { (.+)=(.+) => [def get_var_]#1 [{ => ]#2[}] }
+
+def init_array { 
+    (.+) => 
+        [d]ef #1_values [{ => }] // init empty array 
+        // push redefines the values function with the appended value
+        [d]ef #1_push [{ (.+) => [d]ef ]#1[_values [{ => ]] #1[_values()][|#1}}]
+}
+
+// displays the elements of the array one per line 
+def display_array {
+    (.+) => print_output(displaying array ^#1:) display_array_inner(^#1_values())
+}
+
+// takes the string of values |a|b|c ... and prints them
+def display_array_inner {
+        ^\|([^|]+)(.*)$ => print_output(^#1) display_array_inner(^#2)
+    ||  => 
+}
+
