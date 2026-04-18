@@ -28,7 +28,7 @@ After a string replacement is performed, the interpreter keeps reading at the be
     * *Example:* `{ world, hello :: (.*), (.*) => #2, #1! }` evaluates to `"hello, world!"`.
 * **Nesting & Caret Operator:** Note that scopes can be nested. The registers of parent scopes are available using the caret operator `^` (`^^#3` is the third register 2 scopes up).
     * *Example:* `{ world, hello :: (.*), (.*) => { moon, goodbye :: (.*), (.*) => ^#2, ^#1! #2, #1!} }` evaluates to `"hello world! goodbye, moon"`.
-* **Evaluation Rules:** Note that the input and output strings are evaluated, but the pattern is not. It is passed as-is to the regex engine. This is done to prevent nasty collisions with regex symbols and to avoid never-ending character escapes.
+* **Evaluation Rules:** The input and output of a scope are evaluated as if they where their own program, until no further changes happen. More specifically, the interpreter applies changes to the input of a scope until no further changes happen, then it tries to match the pattern, saving the new capture groups in registers. After that, the output is fully evaluated and only then is the scope replaced by the resulting output. Note that the pattern is not evaluated at all. It is passed as-is to the regex engine. This is done to prevent nasty collisions with regex symbols and to avoid never-ending character escapes.
 * **Whitespace:** The input, pattern, and output are trimmed, meaning that all surrounding (but not internal) whitespace is removed to allow for code formatting.
 * **Multiple Match Arms:** Scopes may also contain multiple match arms, separated by `||`. A scope evaluates to the output of the first arm that matches the input. If no arm matches the input, an error is raised.
     * *Example:* `{ foo :: doesnt match => whatever || next pattern => no match || ... => bar || even more arms => unreachable }` evaluates to `"bar"`.
@@ -48,7 +48,11 @@ However, functions are not just sugar for scopes, as they enable recursion.
 ### Evaluation Protection
 
 When parsing the current state, anything inside square braces is ignored, but when a scope (or function) returns, then a single layer of square braces is stripped from its fully evaluated output string before the replacement is performed. This enables meta-programming.
- * *Example:* `{ define the function f :: => [d]ef f [{ foo => bar }] }` evaluates to `"def f [ foo => bar ]"` and is then read back in at the parent scope. If the definition is written normaly inside the scope, then it defines a local function which will not be available in the parent. For more complex examples, see below
+ * *Example:* `{ define the function f :: => [d]ef f [{ foo => bar }] }` evaluates to `"def f { foo => bar }"` and is then read back in at the parent scope. If the definition is written normaly inside the scope, then it defines a local function which will not be available in the parent. For more complex examples, see below
+
+### Comments
+
+Any part of the program surrounded by `//` and a newline is a comment and ignored by the interpreter.
 
 ---
 
@@ -59,7 +63,7 @@ For IO and debugging, we provide the following built-in functions:
 * **`get_file(path)`:** Takes a path, reads the file, and replaces itself by the content of the file.
 * **`get_input(prompt)`:** Takes a prompt, prints it to stdout and expects user input via stdin. Then it replaces itself by that input.
 * **`print_output(content)`:** Simply prints whatever is passed to it and then replaces itself by the empty string.
-* **`debug(...)`:** Enables debug mode for the evaluation of its content. It prints the full history of the evolution of its content through all string replacements done.
+* **`debug(...)`:** Enables debug mode for the evaluation of its content. It prints the full history of the evolution of its content through all string replacements done. (Work in progress)
 
 ---
 
