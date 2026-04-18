@@ -1,6 +1,6 @@
 # Subtext
 
-Subtext is a regex-based, purely functional esoteric programming language; basically, it is a text rewriting system.
+Subtext is a regex-based, mostly functional esoteric programming language; basically, it is a text rewriting system.
 
 This repo contains an interpreter written in Rust. A Wasm web version can be accessed through [this link](https://page.math.tu-berlin.de/~lauff/subtext/index.html).
 To run locally, clone this repository and run with 
