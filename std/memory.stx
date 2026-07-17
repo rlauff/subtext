@@ -10,8 +10,12 @@ def set_var { (.+)=(.+) => [def get_var_]#1 [{ => ]#2[}] }
 def init_array { 
     (.+) => 
         [d]ef #1_values [{ => }] // init empty array 
+        
         // push redefines the values function with the appended value
         [d]ef #1_push [{ (.+) => [d]ef ]#1[_values [{ => ]] #1[_values()][|#1}}]
+        
+        // pop removes the last element, redefines the values function, and returns the element
+        [d]ef #1_pop [{ => { ]#1[_values() :: (.*)\|([^|]+)$ => [[d]ef ]]#1[[_values [{ => ]]][#1][[[} ]]][#2 || => } }]
 }
 
 def display_array {
@@ -24,16 +28,14 @@ def display_array_inner {
     ||  => 
 }
 
-set_var(x=1)
-set_var(y=2)
-print_output(x = get_var_x())
-print_output(y = get_var_y())
-
 init_array(arr)
 arr_push(1)
 arr_push(2)
 arr_push(3)
-arr_push(4)
-print_output(array arr values string: arr_values())
+set_var(popped=~arr_pop()) // note that when calling pop inside a function, then the new values function will be one scope too deep
+// we can save the result of the pop in a var and and then call pop again to remove the value
+// TODO: find a better solution
+arr_pop()
+print_output(pop: get_var_popped()) 
 display_array(arr)
 
