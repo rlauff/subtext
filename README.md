@@ -1,6 +1,6 @@
 # Subtext
 
-Subtext is a regex-based, purely functional esoteric programming language; basically, it is a text rewriting system.
+Subtext is a regex-based, mostly functional esoteric programming language; basically, it is a text rewriting system.
 
 This repo contains an interpreter written in Rust. A Wasm web version can be accessed through [this link](https://page.math.tu-berlin.de/~lauff/subtext/index.html).
 To run locally, clone this repository and run with 
@@ -28,7 +28,7 @@ After a string replacement is performed, the interpreter keeps reading at the be
     * *Example:* `{ world, hello :: (.*), (.*) => #2, #1! }` evaluates to `"hello, world!"`.
 * **Nesting & Caret Operator:** Note that scopes can be nested. The registers of parent scopes are available using the caret operator `^` (`^^#3` is the third register 2 scopes up).
     * *Example:* `{ world, hello :: (.*), (.*) => { moon, goodbye :: (.*), (.*) => ^#2, ^#1! #2, #1!} }` evaluates to `"hello world! goodbye, moon"`.
-* **Evaluation Rules:** Note that the input and output strings are evaluated, but the pattern is not. It is passed as-is to the regex engine. This is done to prevent nasty collisions with regex symbols and to avoid never-ending character escapes.
+* **Evaluation Rules:** The input and output of a scope are evaluated as if they where their own program, until no further changes happen. More specifically, the interpreter applies changes to the input of a scope until no further changes happen, then it tries to match the pattern, saving the new capture groups in registers. After that, the output is fully evaluated and only then is the scope replaced by the resulting output. Note that the pattern is not evaluated at all. It is passed as-is to the regex engine. This is done to prevent nasty collisions with regex symbols and to avoid never-ending character escapes.
 * **Whitespace:** The input, pattern, and output are trimmed, meaning that all surrounding (but not internal) whitespace is removed to allow for code formatting.
 * **Multiple Match Arms:** Scopes may also contain multiple match arms, separated by `||`. A scope evaluates to the output of the first arm that matches the input. If no arm matches the input, an error is raised.
     * *Example:* `{ foo :: doesnt match => whatever || next pattern => no match || ... => bar || even more arms => unreachable }` evaluates to `"bar"`.
@@ -45,6 +45,14 @@ However, functions are not just sugar for scopes, as they enable recursion.
     * *Example:* `def swap { (.*)&(.*) => #2#1 } 
         { world, hello :: (.*), (.*) => swap(^#1&^#2) }
         `
+### Evaluation Protection
+
+When parsing the current state, anything inside square braces is ignored, but when a scope (or function) returns, then a single layer of square braces is stripped from its fully evaluated output string before the replacement is performed. This enables meta-programming.
+ * *Example:* `{ define the function f :: => [d]ef f [{ foo => bar }] }` evaluates to `"def f { foo => bar }"` and is then read back in at the parent scope. If the definition is written normaly inside the scope, then it defines a local function which will not be available in the parent. For more complex examples, see below
+
+### Comments
+
+Any part of the program surrounded by `//` and a newline is a comment and ignored by the interpreter.
 
 ---
 
@@ -55,7 +63,7 @@ For IO and debugging, we provide the following built-in functions:
 * **`get_file(path)`:** Takes a path, reads the file, and replaces itself by the content of the file.
 * **`get_input(prompt)`:** Takes a prompt, prints it to stdout and expects user input via stdin. Then it replaces itself by that input.
 * **`print_output(content)`:** Simply prints whatever is passed to it and then replaces itself by the empty string.
-* **`debug(...)`:** Enables debug mode for the evaluation of its content. It prints the full history of the evolution of its content through all string replacements done.
+* **`debug(...)`:** Enables debug mode for the evaluation of its content. It prints the full history of the evolution of its content through all string replacements done. (Work in progress)
 
 ---
 
@@ -278,4 +286,46 @@ def fibonacci {
 }
 
 print_output(fibonacci(100))
+```
+
+### Variables and arrays
+
+```subtext
+// call set_var(name=value) will define a function named get_var_name() that returns value
+// the function will be defined in the callers scope 
+// if you want to define a function in a higher scope, wrap it in more layers of protection braces []
+
+def set_var { (.+)=(.+) => [def get_var_]#1 [{ => ]#2[}] }
+
+def init_array { 
+    (.+) => 
+        [d]ef #1_values [{ => }] // init empty array 
+        // push redefines the values function with the appended value
+        [d]ef #1_push [{ (.+) => [d]ef ]#1[_values [{ => ]] #1[_values()][|#1}}]
+}
+
+// displays an array, one element per line
+def display_array {
+    (.+) => print_output(displaying array ^#1:) display_array_inner(^#1_values())
+}
+
+// takes the string of values |a|b|c ... and prints them
+def display_array_inner {
+        ^\|([^|]+)(.*)$ => print_output(^#1) display_array_inner(^#2)
+    ||  => 
+}
+
+set_var(x=1)
+set_var(y=2)
+print_output(x = get_var_x())
+print_output(y = get_var_y())
+
+init_array(arr)
+arr_push(1)
+arr_push(2)
+arr_push(3)
+arr_push(4)
+print_output(array arr values string: arr_values())
+display_array(arr)
+
 ```
