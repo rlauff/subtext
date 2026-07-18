@@ -28,18 +28,14 @@ pub mod error;
 pub mod interpreter;
 pub mod linked_chars;
 pub mod scope;
+#[cfg(test)]
+mod tests;
 
 use interpreter::Interpreter;
 use linked_chars::LinkedChars;
 
 pub fn run_code_logic(input_string: String) -> Result<(), error::SubtextError> {
-    let mut root_interpreter = Interpreter {
-        state: LinkedChars::from_iter(input_string.chars()),
-        registers: vec![],
-        functions: vec![],
-        parent: None,
-        history: None,
-    };
+    let mut root_interpreter = Interpreter::root(LinkedChars::from_iter(input_string.chars()));
 
     root_interpreter.evaluate()
 }
@@ -50,8 +46,7 @@ pub fn run_wasm(code: &str) {
     match run_code_logic(code.to_string()) {
         Ok(_) => {} // Alles lief fehlerfrei durch, keine weitere Aktion nötig
         Err(err) => {
-            // Nutze dein Makro, das auch schon bei print_output() reibungslos funktioniert!
-            subtext_println!("Error: {}", err);
+            subtext_println!("{}", err);
         }
     }
 }

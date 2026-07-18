@@ -9,6 +9,7 @@ self.subtextPrint = function (text) {
 };
 
 let run_wasm = null;
+let wasm_mod = null;
 
 self.onmessage = async function (e) {
     const msg = e.data;
@@ -17,10 +18,26 @@ self.onmessage = async function (e) {
         try {
             const mod = await import("./pkg/subtext.js");
             await mod.default();
+            wasm_mod = mod;
             run_wasm = mod.run_wasm;
             self.postMessage({ type: "ready" });
         } catch (err) {
             self.postMessage({ type: "init-error", text: String(err) });
+        }
+        return;
+    }
+
+    // TODO(review): new — long-form error explanations for the terminal's explain button.
+    if (msg.type === "explain") {
+        if (wasm_mod && typeof wasm_mod.explain_wasm === "function") {
+            self.postMessage({
+                type: "print",
+                text: "\u2500\u2500 explain[" + msg.code + "] \u2500\u2500\n"
+                    + wasm_mod.explain_wasm(msg.code)
+                    + "\n\u2500\u2500 end explain \u2500\u2500",
+            });
+        } else {
+            self.postMessage({ type: "print", text: "note: explanations require a rebuilt pkg (wasm-pack build --target web)" });
         }
         return;
     }

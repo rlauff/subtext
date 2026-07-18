@@ -62,8 +62,13 @@ For IO and debugging, we provide the following built-in functions:
 
 * **`get_file(path)`:** Takes a path, reads the file, and replaces itself by the content of the file.
 * **`get_input(prompt)`:** Takes a prompt, prints it to stdout and expects user input via stdin. Then it replaces itself by that input.
-* **`print_output(content)`:** Simply prints whatever is passed to it and then replaces itself by the empty string.
-* **`debug(...)`:** Enables debug mode for the evaluation of its content. It prints the full history of the evolution of its content through all string replacements done. (Work in progress)
+* **`print(content)`:** Evaluates its argument, prints the result, and then replaces itself by the empty string.
+* **`print_raw(content)`:** Prints its content as is, without evaluating it first.
+* **`debug(expr)`:** Evaluates `expr` exactly like `print_output` would, but streams every rewrite step while doing so: each step shows what was rewritten (`⟨old⟩ ⇒ ⟨new⟩`) together with a window of the surrounding state and where the rewrite happened (input/output of which scope or call). The call then replaces itself by the empty string; the evaluated result is printed in the trailer but *not* substituted back. `debug('raw)` prints the argument verbatim without evaluating it. Traces are capped at 1000 steps.
+
+### Errors
+
+When the interpreter fails, it reports a message of the form `error[<code>]: …` with the relevant values (delimited by `⟨…⟩`, with whitespace made visible as `␤`/`␉`), often a `help:` line with a concrete suggestion, and a backtrace of the scope/call chain with the registers and functions visible at each level. Positions inside a running program are shown as a `^` caret in a state snippet — note that these refer to the *current, rewritten* state, not to your source file: a Subtext program rewrites itself, so stable source line numbers do not exist.
 
 ---
 

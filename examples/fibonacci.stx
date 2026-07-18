@@ -100,7 +100,7 @@ def fibonacci {
    || (\d+)                   => fibonacci(1 1 1 ^#1)
 }
 
-print_output(fibonacci(100))
+print(fibonacci(100))
 
 
 

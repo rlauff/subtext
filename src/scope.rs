@@ -6,8 +6,7 @@ use crate::linked_chars::*;
 
 use regex::Regex;
 
-/// Helper function: Splits a string at the very first occurrence of a string delimiter,
-/// BUT only if the delimiter is not enclosed in braces (depth = 0).
+// Split a string at the first occurence of the delimiter at brace nesting depth 0
 fn split_once_at_top_level(
     input: &str,
     delimiter: &str,
@@ -52,7 +51,7 @@ fn split_once_at_top_level(
     Ok((input.to_string(), None))
 }
 
-/// Helper function: Splits a string at ALL occurrences of a string delimiter
+/// Splits a string at ALL occurrences of a string delimiter
 /// at the top level (depth = 0). Useful for separating the '||' arms.
 fn split_all_at_top_level(input: &str, delimiter: &str) -> Result<Vec<String>, SubtextError> {
     let mut result = Vec::new();
@@ -108,7 +107,7 @@ pub fn evaluate_scope(
     scope: String,
     parent_interpreter: &Interpreter,
     function_name: Option<&str>,
-) -> Result<(LinkedChars, Option<Vec<LinkedChars>>), SubtextError> {
+) -> Result<LinkedChars, SubtextError> {
     let trimmed_scope = scope.trim();
 
     // 1. Safely remove the outermost braces.
@@ -118,73 +117,71 @@ pub fn evaluate_scope(
         trimmed_scope
     };
 
+    let (input_context, output_context) = match function_name {
+        Some(name) => (
+            format!("argument of {}", name),
+            format!("output of call {}", name),
+        ),
+        None => ("input of scope".to_string(), "output of scope".to_string()),
+    };
+
     // 2. Separate input and the rest (the arms) using '::' at the top level
-    let (input_string, rest) = split_once_at_top_level(inner_content, "::")
-        .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
+    let (input_string, rest) = split_once_at_top_level(inner_content, "::")?;
 
     // 3. Evaluate the input string until there are no further changes
     let input_state = LinkedChars::from_iter(input_string.chars());
-    let mut input_interpreter = Interpreter {
-        history: parent_interpreter
-            .history
-            .as_ref()
-            .map(|_| vec![input_state.clone()]),
-        state: input_state,
-        parent: Some(parent_interpreter),
-        registers: vec![],
-        functions: vec![],
-    };
+    let mut input_interpreter = parent_interpreter.spawn_child(input_state, vec![], input_context);
     input_interpreter.evaluate()?;
-    let input = input_interpreter.state.make_string().trim().to_string();
+    // the raw (untrimmed) input is kept to detect the "arm would match before
+    // trimming" case for the NoMatchingArm help text.
+    let input_raw = input_interpreter.state.make_string();
+    let input = input_raw.trim().to_string();
 
     //3.5 If there is no :: we have a scope which  returns the processed input
     let rest = match rest {
         Some(r) => r,
-        None => return Ok((input_interpreter.state, input_interpreter.history)),
+        None => return Ok(input_interpreter.state),
     };
 
     // 4. Split the rest into individual arms (separated by '||')
-    let arms = split_all_at_top_level(&rest, "||")
-        .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?;
+    let arms = split_all_at_top_level(&rest, "||")?;
 
-    for arm in arms {
+    // arm patterns are collected so NoMatchingArm can list them (instead of
+    // dumping the raw scope text), and so the untrimmed-match hint can be computed.
+    let mut arm_patterns: Vec<String> = Vec::new();
+
+    for (arm_index, arm) in arms.iter().enumerate() {
         // 5. Split each arm into pattern and output (separated by '=>')
-        let (pattern_string, output_string) = match split_once_at_top_level(&arm, "=>")
-            .map_err(|err| parent_interpreter.attach_backtrace_without_highlight(err))?
-        {
+        let (pattern_string, output_string) = match split_once_at_top_level(arm, "=>")? {
             (left, Some(right)) => (left, right),
             (_, None) => {
-                return Err(parent_interpreter.attach_backtrace_without_highlight(
-                    SubtextError::new(ErrorKind::MalformedArmMissingArrow {
-                        arm_content: arm.trim().to_string(),
-                    }),
-                ));
+                return Err(SubtextError::new(ErrorKind::MalformedArmMissingArrow {
+                    arm_content: arm.trim().to_string(),
+                }));
             }
         };
         // uncomment to activate evaluation in patterns
         // the problem with this is that regex patterns will contain braces, which messes
-        // up the rest of the parsing
+        // up the rest of the parsing.
+        // In the furture there could be some special syntax for this
         //
         // Evaluate the pattern string
-        // let mut pattern_interpreter = Interpreter {
-        //     state: LinkedChars::from_iter(pattern_string.chars()),
-        //     parent: Some(parent_interpreter),
-        //     registers: vec![],
-        //     functions: parent_interpreter.functions.clone(),
-        //  };
+        // let mut pattern_interpreter = parent_interpreter.child(
+        //     LinkedChars::from_iter(pattern_string.chars()), vec![], "pattern".to_string());
         // pattern_interpreter.evaluate();
         let pattern = pattern_string.trim().to_string();
         let output_string = output_string.trim().to_string();
 
         // 6. Create Regex and attempt to match against the evaluated input
         let re = Regex::new(&pattern).map_err(|err| {
-            parent_interpreter.attach_backtrace_without_highlight(SubtextError::new(
-                ErrorKind::InvalidRegex {
-                    pattern: pattern.clone(),
-                    reason: err.to_string(),
-                },
-            ))
+            SubtextError::new(ErrorKind::InvalidRegex {
+                pattern: pattern.clone(),
+                reason: err.to_string(),
+                arm_index,
+            })
         })?;
+        arm_patterns.push(pattern);
+
         if let Some(caps) = re.captures(&input) {
             // Populate registers (Capture Groups from the Regex)
             let registers: Vec<String> = caps
@@ -195,64 +192,34 @@ pub fn evaluate_scope(
 
             // 7. Evaluate the output since we have a successful match
             let output_state = LinkedChars::from_iter(output_string.chars());
-            let mut output_interpreter = Interpreter {
-                history: parent_interpreter
-                    .history
-                    .as_ref()
-                    .map(|_| vec![output_state.clone()]),
-                state: output_state,
-                parent: Some(parent_interpreter),
-                registers,
-                functions: vec![],
-            };
+            let mut output_interpreter =
+                parent_interpreter.spawn_child(output_state, registers, output_context.clone());
             output_interpreter.evaluate()?;
             // strip outer layer of protecting braces before returning output
             output_interpreter.state.strip_outer_protection_layer();
 
-            // Return the fully evaluated output state
-            // We should put a wrapper around input and output history like { input => } and { => output }.
-            match input_interpreter.history.as_ref() {
-                Some(input_history) => match output_interpreter.history.as_ref() {
-                    Some(output_history) => {
-                        let mut combined_history = input_history
-                            .clone()
-                            .into_iter()
-                            .map(|state| {
-                                let to_string = match function_name {
-                                    Some(name) => {
-                                        format!("{}( {} )", name, state.make_string().trim())
-                                    }
-                                    None => format!("{{ {} => }}", state.make_string().trim()),
-                                };
-                                LinkedChars::from_iter(to_string.chars())
-                            })
-                            .collect::<Vec<LinkedChars>>();
-                        combined_history.extend(output_history.clone());
-                        return Ok((output_interpreter.state, Some(combined_history)));
-                    }
-                    // this None case should never happen
-                    None => {
-                        return Err(parent_interpreter.attach_backtrace_without_highlight(
-                            SubtextError::new(ErrorKind::InternalInvariant {
-                                message: "missing history in output interpreter".to_string(),
-                            }),
-                        ));
-                    }
-                },
-                None => return Ok((output_interpreter.state, None)),
-            }
+            return Ok(output_interpreter.state);
         }
     }
 
     // If no patterns match
-    Err(
-        parent_interpreter.attach_backtrace_without_highlight(SubtextError::new(
-            ErrorKind::NoMatchingArm {
-                input,
-                scope_content: inner_content.trim().to_string(),
-            },
-        )),
-    )
+    // check whether some arm would have matched the input before trimming —
+    // by far the most common source of this error; reported via the help text.
+    let untrimmed_match = if input_raw != input {
+        arm_patterns.iter().position(|pattern| {
+            Regex::new(pattern)
+                .map(|re| re.is_match(&input_raw))
+                .unwrap_or(false)
+        })
+    } else {
+        None
+    };
+
+    Err(SubtextError::new(ErrorKind::NoMatchingArm {
+        input,
+        arms: arm_patterns,
+        untrimmed_match,
+    }))
 }
 
 // -----------------------------------------------------------------------------
@@ -263,15 +230,8 @@ mod tests {
     use super::*;
     use crate::error::ErrorKind;
 
-    // Helper to quickly spin up a dummy parent interpreter for our tests
     fn dummy_interpreter() -> Interpreter<'static> {
-        Interpreter {
-            state: LinkedChars::new(),
-            parent: None,
-            registers: vec![],
-            functions: vec![],
-            history: None,
-        }
+        Interpreter::root(LinkedChars::new())
     }
 
     #[test]
@@ -279,7 +239,7 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "{ hello :: hello => world }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "world");
+        assert_eq!(result.make_string().trim(), "world");
     }
 
     #[test]
@@ -287,7 +247,7 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "{ test :: foo => bad || test => success }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "success");
+        assert_eq!(result.make_string().trim(), "success");
     }
 
     #[test]
@@ -296,10 +256,8 @@ mod tests {
         // Inner evaluates to "b". Outer matches "b" and outputs "c".
         let scope = "{ { a :: a => b } :: b => c }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "c");
+        assert_eq!(result.make_string().trim(), "c");
     }
-
-    // --- Complex Regex Tests (Testing the advantage of the new syntax) ---
 
     #[test]
     fn test_regex_with_colons_and_semicolons() {
@@ -309,7 +267,7 @@ mod tests {
         // With the old single colon syntax, this would have broken the parser immediately!
         let scope = "{ 12:30 :: (?:12|24):[0-5][0-9] => match_time }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "match_time");
+        assert_eq!(result.make_string().trim(), "match_time");
     }
 
     #[test]
@@ -319,7 +277,7 @@ mod tests {
         // We want to make sure a single `|` in the regex doesn't accidentally trigger an arm split.
         let scope = "{ apple :: banana|apple => fruit || dog|cat => animal }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "fruit");
+        assert_eq!(result.make_string().trim(), "fruit");
     }
 
     #[test]
@@ -327,7 +285,7 @@ mod tests {
         let parent = dummy_interpreter();
         let scope = "{ world hello, :: (.....) (......) => #2 #1! }".to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "hello, world!");
+        assert_eq!(result.make_string().trim(), "hello, world!");
     }
 
     #[test]
@@ -337,7 +295,7 @@ mod tests {
             "{ world hello, moon! :: (.....) (......) (.*) => #2 #1! { Goodby, :: (.*) => #1 ^#3 } }"
                 .to_string();
         let result = evaluate_scope(scope, &parent, None).expect("Scope evaluation failed");
-        assert_eq!(result.0.make_string().trim(), "hello, world! Goodby, moon!");
+        assert_eq!(result.make_string().trim(), "hello, world! Goodby, moon!");
     }
 
     // --- Error Case Tests ---

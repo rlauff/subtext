@@ -8,6 +8,23 @@ pub struct CharNode {
     pub next: Option<usize>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Snippet {
+    pub text: String,
+    pub caret: Option<usize>,
+    pub clipped_start: bool,
+    pub clipped_end: bool,
+}
+
+pub fn sanitize_char(c: char) -> char {
+    match c {
+        '\n' => '␤',
+        '\t' => '␉',
+        '\r' => '␍',
+        _ => c,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct LinkedChars {
     // The arena stores all nodes sequentially in memory.
@@ -187,10 +204,10 @@ impl LinkedChars {
 
     // creates a snippet around an index of a given length. For printing helpful error messages,
     // this should show the area around where an error occured
-    pub fn make_snippet(&self, highlight_idx: Option<usize>, max_len: usize) -> String {
+    pub fn make_snippet(&self, highlight_idx: Option<usize>, max_len: usize) -> Snippet {
         let full: Vec<char> = self.enumerate_with_start(0).map(|(_, n)| n.c).collect();
         if full.is_empty() {
-            return String::new();
+            return Snippet::default();
         }
 
         let highlight_pos = highlight_idx.and_then(|idx| self.index_to_char_pos(idx));
@@ -205,15 +222,13 @@ impl LinkedChars {
             (0, max_len)
         };
 
-        let snippet: String = full[start..end].iter().collect();
-        if let Some(pos) = highlight_pos {
-            let caret_offset = pos.saturating_sub(start);
-            let mut caret_line = String::new();
-            caret_line.push_str(&" ".repeat(caret_offset));
-            caret_line.push('^');
-            format!("{}\n{}", snippet, caret_line)
-        } else {
-            snippet
+        Snippet {
+            text: full[start..end].iter().map(|c| sanitize_char(*c)).collect(),
+            caret: highlight_pos
+                .filter(|pos| (start..end).contains(pos))
+                .map(|pos| pos - start),
+            clipped_start: start > 0,
+            clipped_end: end < full.len(),
         }
     }
 
@@ -391,15 +406,26 @@ mod tests {
     fn test_make_snippet_with_highlight() {
         let lc = LinkedChars::from_iter("hello world".chars());
         let snippet = lc.make_snippet(Some(6), 80);
-        assert!(snippet.contains("hello world"));
-        assert!(snippet.contains('^'));
+        assert_eq!(snippet.text, "hello world");
+        assert_eq!(snippet.caret, Some(5)); // arena idx 6 is the 6th char => char pos 5
+        assert!(!snippet.clipped_start && !snippet.clipped_end);
     }
 
     #[test]
     fn test_make_snippet_without_highlight() {
         let lc = LinkedChars::from_iter("hello world".chars());
         let snippet = lc.make_snippet(None, 5);
-        assert_eq!(snippet, "hello");
+        assert_eq!(snippet.text, "hello");
+        assert_eq!(snippet.caret, None);
+        assert!(snippet.clipped_end);
+    }
+
+    #[test]
+    fn test_make_snippet_sanitizes_whitespace() {
+        let lc = LinkedChars::from_iter("ab\ncd\te".chars());
+        let snippet = lc.make_snippet(Some(5), 80); // highlight the 'd'
+        assert_eq!(snippet.text, "ab␤cd␉e");
+        assert_eq!(snippet.caret, Some(4));
     }
 
     #[test]

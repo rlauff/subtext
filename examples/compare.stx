@@ -33,7 +33,7 @@ def compare {
     ||  &([<,>,=])                      => #1 // numbers have the same length, return the current state
 }
 
-print_output(compare(1234&1235)) // <
-print_output(compare(1234&1234)) // =
-print_output(compare(1235&1234)) // >
-print_output(compare(999&1000))  // <
+print(compare(1234&1235)) // <
+print(compare(1234&1234)) // =
+print(compare(1235&1234)) // >
+print(compare(999&1000))  // <

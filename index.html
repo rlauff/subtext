@@ -168,6 +168,162 @@ button.action:disabled {
     margin-left: 6px;
 }
 
+/* ---------- dropdown menus ---------- */
+
+.menu { position: relative; }
+
+.menu-btn {
+    font-family: var(--mono);
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink);
+    padding: 6px 14px;
+    cursor: pointer;
+}
+
+.menu-btn:hover, .menu-btn[aria-expanded="true"] { border-color: var(--muted); }
+
+/* the challenges menu is the eye-catcher */
+.menu-btn.accent {
+    border-color: var(--arrow);
+    color: var(--arrow);
+    font-weight: 700;
+}
+.menu-btn.accent:hover, .menu-btn.accent[aria-expanded="true"] {
+    background: rgba(232, 182, 76, 0.10);
+}
+
+.menu-btn .arr { font-size: 10px; opacity: 0.7; }
+#ch-count { font-weight: 400; font-size: 11px; opacity: 0.85; }
+
+.menu-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 60;
+    min-width: 300px;
+    max-width: min(420px, calc(100vw - 48px));
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.menu-section {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    padding: 8px 10px 4px;
+}
+.menu-section.easy   { color: var(--mint); }
+.menu-section.medium { color: var(--arrow); }
+.menu-section.hard   { color: var(--rose); }
+.menu-section.expert { color: var(--lilac); }
+
+.menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink);
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.menu-item:hover { background: var(--editor-bg); }
+
+/* narrow screens: anchor the panel to the toolbar and span its width */
+@media (max-width: 600px) {
+    .toolbar { position: relative; }
+    .menu { position: static; }
+    .menu-panel { left: 12px; right: 12px; min-width: 0; max-width: none; }
+}
+.menu-item .desc { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.menu-item .tick { color: var(--mint); margin-right: 6px; }
+
+/* ---------- challenge panel ---------- */
+
+.challenge {
+    display: none;
+    margin: 0 24px 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+
+.challenge.open { display: block; }
+
+.challenge .head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    cursor: pointer;   /* click header to collapse/expand */
+}
+
+.challenge .head .name { font-weight: 700; }
+
+.challenge .diff { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.challenge .diff.easy   { color: var(--mint); }
+.challenge .diff.medium { color: var(--arrow); }
+.challenge .diff.hard   { color: var(--rose); }
+.challenge .diff.expert { color: var(--lilac); }
+
+.challenge .solved-badge { color: var(--mint); font-weight: 700; }
+
+.challenge .head .close, .challenge .head .fold {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-family: var(--mono); font-size: 14px;
+}
+.challenge .head .fold { margin-left: auto; }
+.challenge .head .close:hover, .challenge .head .fold:hover { color: var(--ink); }
+
+/* the panel body never dominates the page: capped, scrolls internally,
+   and collapses entirely to the header line */
+.challenge .body { max-height: 38vh; overflow-y: auto; }
+.challenge.collapsed .body { display: none; }
+
+.challenge .blurb { color: var(--muted); margin: 6px 0 8px; line-height: 1.5; }
+
+.challenge .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.challenge .actions button {
+    font-family: var(--mono); font-size: 12px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--ink);
+    padding: 4px 10px; cursor: pointer;
+}
+.challenge .actions button:hover:not(:disabled) { border-color: var(--muted); }
+.challenge .actions button:disabled { color: var(--faint); cursor: default; }
+
+.challenge .hint {
+    margin: 8px 0 0; padding-left: 10px;
+    border-left: 2px solid var(--arrow);
+    color: var(--ink); line-height: 1.5;
+}
+
+.challenge .solution-box { margin-top: 8px; }
+.challenge .solution-box pre {
+    margin: 6px 0; padding: 8px 10px;
+    background: var(--editor-bg); border: 1px solid var(--line); border-radius: 6px;
+    overflow-x: auto; overflow-y: auto; max-height: 200px;
+    font-size: 12.5px; line-height: 1.5;
+}
+
+.challenge .results { margin-top: 8px; line-height: 1.6; }
+.challenge .results .pass { color: var(--mint); }
+.challenge .results .fail { color: var(--err); }
+
 /* ---------- workspace: editor => output ---------- */
 
 main {
@@ -319,7 +475,25 @@ body.running .divider span {
     color: var(--faint);
 }
 
-#terminal .err { color: var(--err); }
+/* line classes assigned by classifyLine() — see flushPrints */
+#terminal .err  { color: var(--err); }
+#terminal .help { color: var(--arrow); }
+#terminal .note { color: var(--sky); }
+#terminal .dim  { color: var(--muted); }
+
+.explain-btn {
+    margin-left: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0 6px;
+    cursor: pointer;
+    vertical-align: baseline;
+}
+.explain-btn:hover { color: var(--ink); border-color: var(--muted); }
 
 /* ---------- status bar ---------- */
 
@@ -372,12 +546,42 @@ body.failed  .dot { background: var(--err); }
 </header>
 
 <div class="toolbar">
-    <span class="label">examples</span>
-    <span id="examples"></span>
+    <div class="menu">
+        <button class="menu-btn" id="examples-btn" aria-haspopup="true" aria-expanded="false">examples <span class="arr">&#9662;</span></button>
+        <div class="menu-panel" id="examples-panel" hidden></div>
+    </div>
+    <div class="menu">
+        <button class="menu-btn accent" id="challenges-btn" aria-haspopup="true" aria-expanded="false">challenges <span id="ch-count"></span> <span class="arr">&#9662;</span></button>
+        <div class="menu-panel" id="challenges-panel" hidden></div>
+    </div>
     <span class="spacer"></span>
     <button class="action" id="stop-btn" disabled>Stop</button>
     <button class="action" id="run-btn" disabled>Run<kbd>Ctrl+&#9166;</kbd></button>
 </div>
+
+<section class="challenge" id="challenge-panel" aria-label="Challenge">
+    <div class="head" id="ch-head">
+        <span class="name" id="ch-name"></span>
+        <span class="diff" id="ch-diff"></span>
+        <span class="solved-badge" id="ch-solved" hidden>solved &#10003;</span>
+        <button class="fold" id="ch-fold" title="Collapse / expand">&#9662;</button>
+        <button class="close" id="ch-close" title="Close challenge">&#10005;</button>
+    </div>
+    <div class="body" id="ch-body">
+        <div class="blurb" id="ch-blurb"></div>
+        <div class="actions">
+            <button id="ch-hint">show hint</button>
+            <button id="ch-solution">show solution</button>
+            <button id="ch-check">check solution</button>
+        </div>
+        <div id="ch-hints"></div>
+        <div class="solution-box" id="ch-solution-box" hidden>
+            <pre id="ch-solution-code"></pre>
+            <div class="actions"><button id="ch-load-solution">load solution into editor</button></div>
+        </div>
+        <div class="results" id="ch-results"></div>
+    </div>
+</section>
 
 <main>
     <section class="pane" aria-label="Program editor">
@@ -424,7 +628,7 @@ const DEFAULT_PROGRAM = `// Welcome to Subtext. A program is rewritten, step by 
 // groups are stored in registers #1, #2, ..., and the whole
 // scope is replaced by the output.
 
-print_output({ world, hello :: (.*), (.*) => #2, #1! })
+print({ world, hello :: (.*), (.*) => #2, #1! })
 
 // Load an example above, or see the language reference.
 `;
@@ -505,18 +709,52 @@ function spawnWorker() {
 let printBuffer = [];
 let flushScheduled = false;
 
+/* Classify one line of interpreter output by its stable prefix.
+   The interpreter emits: "error[<code>]: …", "help: …", "note: …",
+   backtrace/trace continuation lines containing a "│" gutter, debug
+   markers "── … ──", and truncation markers "… … …". */
+function classifyLine(line) {
+    if (/^error(\[|:)/.test(line)) return "err";
+    if (/^help:/.test(line)) return "help";
+    if (/^note:/.test(line)) return "note";
+    if (/^backtrace/.test(line)) return "dim";
+    if (/^\s*-->/.test(line)) return "dim";
+    if (/^\s*(\d+\s*)?│/.test(line)) return "dim";
+    if (/^──/.test(line) || /^…/.test(line)) return "dim";
+    /* indented error details (input:/arm N:) stay in the default ink on purpose:
+       they are the content the user needs to read, and any prefix-based rule
+       would misfire on ordinary program output */
+    return null;
+}
+
 function flushPrints() {
     flushScheduled = false;
     if (!printBuffer.length) return;
     const stick = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 8;
     for (const text of printBuffer) {
-        if (/^Error\b/.test(text)) {
-            const span = document.createElement("span");
-            span.className = "err";
-            span.textContent = text + "\n";
-            terminal.appendChild(span);
-        } else {
-            terminal.appendChild(document.createTextNode(text + "\n"));
+        for (const line of text.split("\n")) {
+            const cls = classifyLine(line);
+            if (cls) {
+                const span = document.createElement("span");
+                span.className = cls;
+                span.textContent = line;
+                terminal.appendChild(span);
+                /* error headlines get an inline "explain" button that asks the
+                   interpreter for the long-form explanation of the error code */
+                const m = cls === "err" && line.match(/^error\[([a-z-]+)\]/);
+                if (m) {
+                    const btn = document.createElement("button");
+                    btn.className = "explain-btn";
+                    btn.textContent = "explain";
+                    btn.addEventListener("click", () => {
+                        if (wasmReady) worker.postMessage({ type: "explain", code: m[1] });
+                    });
+                    terminal.appendChild(btn);
+                }
+                terminal.appendChild(document.createTextNode("\n"));
+            } else {
+                terminal.appendChild(document.createTextNode(line + "\n"));
+            }
         }
     }
     printBuffer = [];
@@ -544,13 +782,16 @@ function onWorkerMessage(e) {
             break;
         case "print":
             schedulePrint(msg.text);
+            if (activeCheck) activeCheck.received.push(msg.text);
             break;
         case "done":
             finishRun("ready", "finished in " + formatMs(msg.ms));
+            finishCheck(true);
             break;
         case "error":
-            schedulePrint("Error: " + msg.text);
+            schedulePrint("error: " + msg.text);
             finishRun("failed", "run failed");
+            finishCheck(false);
             break;
     }
 }
@@ -570,6 +811,7 @@ function finishRun(cls, text) {
 
 function run() {
     if (running || !wasmReady) return;
+    activeCheck = null;
     running = true;
     runBtn.disabled = true;
     stopBtn.disabled = false;
@@ -581,6 +823,7 @@ function run() {
 
 function stop() {
     if (!running) return;
+    if (activeCheck) { activeCheck = null; chResults.textContent = "check stopped"; }
     worker.terminate();
     finishRun("", "stopped \u2014 reloading wasm module\u2026");
     runBtn.disabled = true;
@@ -601,26 +844,205 @@ editor.setOption("extraKeys", {
 /*  toolbar: examples, clear, share                                   */
 /* ------------------------------------------------------------------ */
 
-const EXAMPLES = ["binary_increment", "compare", "turing", "fibonacci", "memory_example"];
+/* NOTE: the hosting server is locked down — every file this page reads must be
+   referenced by an explicit literal path (no runtime-constructed URLs). The
+   guided-tour examples below are inline for the same reason. */
+const EXAMPLE_FILES = [
+    { name: "binary_increment", path: "examples/binary_increment.stx", desc: "increment a binary number" },
+    { name: "compare",          path: "examples/compare.stx",          desc: "compare two numbers digit by digit" },
+    { name: "turing",           path: "examples/turing.stx",           desc: "a Turing machine (palindrome check)" },
+    { name: "fibonacci",        path: "examples/fibonacci.stx",        desc: "fibonacci(100), with decimal addition" },
+    { name: "memory_example",   path: "examples/memory_example.stx",   desc: "mutable variables built from scopes" },
+];
 
-const examplesEl = document.getElementById("examples");
-for (const name of EXAMPLES) {
-    const btn = document.createElement("button");
-    btn.className = "chip";
-    btn.textContent = name;
-    btn.addEventListener("click", async () => {
-        try {
-            const response = await fetch("examples/" + name + ".stx");
-            if (!response.ok) throw new Error("HTTP " + response.status);
-            editor.setValue(await response.text());
-            terminal.textContent = "";
-            history.replaceState(null, "", location.pathname);
-            editor.focus();
-        } catch (err) {
-            schedulePrint("Error: could not load examples/" + name + ".stx (" + err.message + ")");
-        }
+const TOUR = [
+{
+    id: "tour_scopes",
+    title: "1 \u00b7 scopes & arms",
+    desc: "match an input against patterns; the first arm wins",
+    code: String.raw`// ── scopes and arms ─────────────────────────────────
+// The heart of Subtext: a scope
+//
+//     { input :: pattern => output }
+//
+// matches its input against a regex pattern and is
+// replaced by the output. Alternative arms are
+// separated by || and tried in order — first match
+// wins.
+
+print({ cat :: dog => woof! || cat => meow! })
+
+print({ 42 :: [a-z]+ => a word || [0-9]+ => a number })
+
+// A scope without :: simply evaluates to its input:
+print({ plain text })
+`,
+},
+{
+    id: "tour_registers",
+    title: "2 \u00b7 registers",
+    desc: "capture groups, and ^ to reach outer scopes",
+    code: String.raw`// ── registers and capture groups ────────────────────
+// Capture groups (…) store what they matched in the
+// registers #1, #2, … — available in the output of
+// the arm that matched.
+
+print({ hello, world :: (.*), (.*) => #2, #1! })
+
+// Scopes nest. From an inner scope, ^#1 reaches the
+// registers one scope up, ^^#1 two scopes up:
+
+print({ outer :: (.*) => { inner :: (.*) => #1 and ^#1 } })
+`,
+},
+{
+    id: "tour_functions",
+    title: "3 \u00b7 functions & recursion",
+    desc: "def, calls, and loops via self-reference",
+    code: String.raw`// ── functions and recursion ─────────────────────────
+// def name { arms } defines a function; name(x) calls
+// it with x as the scope input. There are no loops —
+// a function calling itself is the loop.
+
+def countdown {
+        I(.*) => print(I^#1)~countdown(^#1)
+    ||        => liftoff!
+}
+
+print(countdown(III))
+
+// Note the ^ in countdown(^#1): a call argument is
+// evaluated one scope deeper than the arm's output.
+`,
+},
+{
+    id: "tour_ghost",
+    title: "4 \u00b7 the ghost char ~",
+    desc: "keeping text and calls from merging",
+    code: String.raw`// ── the ghost character ~ ───────────────────────────
+// Everything is text, and text merges: 0zeroes(…)
+// would be a call to a function named "0zeroes". The
+// ghost char ~ separates text from what follows, then
+// disappears.
+
+def zeroes {
+        I(.*) => 0~zeroes(^#1)
+    ||        =>
+}
+
+print(zeroes(IIII))
+
+// The same trick glues register values to digits:
+// #1~1 means <value of #1> followed by a literal 1
+// (while #11 would be register eleven).
+
+print({ 10 :: (.*) => #1~1 })
+`,
+},
+{
+    id: "tour_debug",
+    title: "5 \u00b7 debug()",
+    desc: "watch every rewrite as it happens",
+    code: String.raw`// ── watching the rewrites: debug() ──────────────────
+// debug(expr) evaluates expr exactly like
+// print would, but streams every single
+// rewrite step: what was replaced, by what, and
+// where. Wrap it around anything that confuses you.
+
+def swap { (.*)&(.*) => #2&#1 }
+
+debug(swap(left&right))
+`,
+},
+];
+
+/* ---------------- dropdown menu machinery ---------------- */
+
+function setupMenu(btnId, panelId) {
+    const btn = document.getElementById(btnId);
+    const panel = document.getElementById(panelId);
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = !panel.hidden;
+        closeAllMenus();
+        if (!open) { panel.hidden = false; btn.setAttribute("aria-expanded", "true"); }
     });
-    examplesEl.appendChild(btn);
+    return { btn, panel };
+}
+
+function closeAllMenus() {
+    for (const m of [examplesMenu, challengesMenu]) {
+        m.panel.hidden = true;
+        m.btn.setAttribute("aria-expanded", "false");
+    }
+}
+
+document.addEventListener("click", closeAllMenus);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllMenus(); });
+
+const examplesMenu = setupMenu("examples-btn", "examples-panel");
+const challengesMenu = setupMenu("challenges-btn", "challenges-panel");
+examplesMenu.panel.addEventListener("click", (e) => e.stopPropagation());
+challengesMenu.panel.addEventListener("click", (e) => e.stopPropagation());
+
+function menuItem(title, desc, onclick, tick) {
+    const btn = document.createElement("button");
+    btn.className = "menu-item";
+    const t = document.createElement("span");
+    if (tick) {
+        const tk = document.createElement("span");
+        tk.className = "tick";
+        tk.textContent = "\u2713";
+        btn.appendChild(tk);
+    }
+    t.textContent = title;
+    btn.appendChild(t);
+    if (desc) {
+        const d = document.createElement("span");
+        d.className = "desc";
+        d.textContent = desc;
+        btn.appendChild(d);
+    }
+    btn.addEventListener("click", () => { closeAllMenus(); onclick(); });
+    return btn;
+}
+
+function renderExamplesMenu() {
+    const panel = examplesMenu.panel;
+    panel.innerHTML = "";
+    const sec1 = document.createElement("div");
+    sec1.className = "menu-section";
+    sec1.textContent = "guided tour";
+    panel.appendChild(sec1);
+    for (const t of TOUR) {
+        panel.appendChild(menuItem(t.title, t.desc, () => {
+            setEditorContent(t.code);
+            editor.focus();
+        }));
+    }
+    const sec2 = document.createElement("div");
+    sec2.className = "menu-section";
+    sec2.textContent = "programs";
+    panel.appendChild(sec2);
+    for (const ex of EXAMPLE_FILES) {
+        panel.appendChild(menuItem(ex.name, ex.desc, async () => {
+            try {
+                const response = await fetch(ex.path);
+                if (!response.ok) throw new Error("HTTP " + response.status);
+                setEditorContent(await response.text());
+                editor.focus();
+            } catch (err) {
+                schedulePrint("error: could not load " + ex.path + " (" + err.message + ")");
+            }
+        }));
+    }
+}
+renderExamplesMenu();
+
+function setEditorContent(text) {
+    editor.setValue(text);
+    terminal.textContent = "";
+    history.replaceState(null, "", location.pathname);
 }
 
 document.getElementById("clear-btn").addEventListener("click", () => {
@@ -640,6 +1062,1022 @@ document.getElementById("share-btn").addEventListener("click", async (e) => {
     }
     setTimeout(() => { btn.textContent = "copy link"; }, 1600);
 });
+
+
+/* ------------------------------------------------------------------ */
+/*  challenges (fully inline — the restricted server serves no        */
+/*  additional files; hints, solutions and tests all live right here) */
+/* ------------------------------------------------------------------ */
+
+const CHALLENGES = [
+{
+    id: "swap",
+    title: "swap",
+    difficulty: "easy",
+    blurb: "Write a function `swap` that exchanges two comma-separated words: swap(hello, world) \u21d2 world, hello.",
+    template: String.raw`// ── challenge: swap ─────────────────────────────────
+// Write a function 'swap' that exchanges two
+// comma-separated words:
+//
+//     swap(hello, world)  ⇒  world, hello
+//
+// Fill in the arm below. Use “check solution” in the
+// challenge panel, or Run to experiment.
+
+def swap {
+    pattern => output
+}
+
+print(swap(hello, world))
+`,
+    hints: [
+        "Match the two words with capture groups: `(.*),\\s*(.*)`. Whatever a group captures lands in a register.",
+        "The output of an arm runs at register level 0 — write `#2, #1` there, no `^` needed.",
+    ],
+    solution: String.raw`def swap {
+    (.*),\s*(.*) => #2, #1
+}
+
+print(swap(hello, world))
+`,
+    tests: [
+        { call: "swap(hello, world)", expected: "world, hello" },
+        { call: "swap(alpha,beta)",   expected: "beta, alpha" },
+    ],
+},
+{
+    id: "reverse",
+    title: "reverse",
+    difficulty: "easy",
+    blurb: "Write a function `reverse` that reverses a word: reverse(subtext) \u21d2 txetbus.",
+    template: String.raw`// ── challenge: reverse ──────────────────────────────
+// Write a function 'reverse' that reverses a word:
+//
+//     reverse(abc)      ⇒  cba
+//     reverse(subtext)  ⇒  txetbus
+//
+// You will need recursion and a base case.
+
+def reverse {
+    pattern => output
+}
+
+print(reverse(subtext))
+`,
+    hints: [
+        "Peel off the first character with `(.)(.*)`, reverse the rest recursively, and put the peeled character after the call: `reverse(\u2026)#1`.",
+        "Two details: a call argument is evaluated one scope deeper, so pass the tail as `^#2`; and you need a base case — an arm with an empty pattern, `|| => `, which matches once everything is peeled.",
+    ],
+    solution: String.raw`def reverse {
+        (.)(.*) => reverse(^#2)#1
+    ||          =>
+}
+
+print(reverse(subtext))
+`,
+    tests: [
+        { call: "reverse(abc)",     expected: "cba" },
+        { call: "reverse(subtext)", expected: "txetbus" },
+        { call: "reverse(x)",       expected: "x" },
+    ],
+},
+{
+    id: "balanced",
+    title: "balanced brackets",
+    difficulty: "medium",
+    blurb: "Write a function `check` that decides whether a string of < and > is properly balanced: check(<<>>) \u21d2 balanced, check(><) \u21d2 unbalanced.",
+    template: String.raw`// ── challenge: balanced brackets ────────────────────
+// Write a function 'check' for bracket strings made
+// of < and >:
+//
+//     check(<<>>)  ⇒  balanced
+//     check(<><>)  ⇒  balanced
+//     check(><)    ⇒  unbalanced
+//
+// Think like a rewriting system, not like a parser.
+
+def check {
+    pattern => output
+}
+
+print(check(<<>>))
+print(check(><))
+`,
+    hints: [
+        "A string is balanced exactly if repeatedly deleting one adjacent `<>` pair ends at the empty string.",
+        "Three arms, tried in order: delete a pair and recurse, `(.*)<>(.*) => check(^#1^#2)`; then `^$ => balanced`; then `.* => unbalanced`.",
+    ],
+    solution: String.raw`def check {
+        (.*)<>(.*) => check(^#1^#2)
+    ||  ^$         => balanced
+    ||  .*         => unbalanced
+}
+
+print(check(<<>>))
+print(check(><))
+`,
+    tests: [
+        { call: "check(<<>>)", expected: "balanced" },
+        { call: "check(<><>)", expected: "balanced" },
+        { call: "check(<<>)",  expected: "unbalanced" },
+        { call: "check(><)",   expected: "unbalanced" },
+    ],
+},
+{
+    id: "min",
+    title: "unary minimum",
+    difficulty: "easy",
+    blurb: "Numbers in unary: III means 3. Write `min` for two unary numbers separated by &: min(III&IIIII) \u21d2 III.",
+    template: String.raw`// ── challenge: unary minimum ────────────────────────
+// Numbers are written in unary: III means 3, the
+// empty string means 0. Write a function 'min' that
+// takes two unary numbers separated by & and rewrites
+// to the smaller one:
+//
+//     min(III&IIIII)  ⇒  III
+//     min(&IIII)      ⇒         (empty: min(0,4)=0)
+
+def min {
+    pattern => output
+}
+
+print(min(III&IIIII))
+`,
+    hints: [
+        "Strip one I from both sides per step and emit one I in front of the recursive call; stop as soon as either side runs out.",
+        "Emitted text merges with what follows: `Imin(\u2026)` parses as a call to a function named Imin. Separate them with the ghost char: `I~min(^#1&^#2)`.",
+    ],
+    solution: String.raw`def min {
+        I(.*)&I(.*) => I~min(^#1&^#2)
+    ||  .*&.*       =>
+}
+
+print(min(III&IIIII))
+`,
+    tests: [
+        { call: "min(III&IIIII)", expected: "III" },
+        { call: "min(IIIII&II)",  expected: "II" },
+        { call: "min(&IIII)",     expected: "" },
+    ],
+},
+{
+    id: "to_bin",
+    title: "unary \u2192 binary",
+    difficulty: "medium",
+    blurb: "Using the provided inc_bin, write `to_bin` that converts a unary number to binary: to_bin(IIIII) \u21d2 101.",
+    template: String.raw`// ── challenge: unary → binary ───────────────────────
+// Convert a unary number into binary:
+//
+//     to_bin(IIIII)  ⇒  101
+//     to_bin()       ⇒  0
+//
+// The binary increment from the examples is given —
+// inc_bin(101) ⇒ 110. Your job is only 'to_bin'.
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_bin {
+    pattern => output
+}
+
+print(to_bin(IIIII))
+`,
+    hints: [
+        "Recurse over the unary length: to_bin(n) = inc_bin(to_bin(n\u22121)), with the base case `^$ => 0`.",
+        "Every nesting level of call arguments adds one `^`: inside `inc_bin(to_bin(\u2026))` your captured register is two levels up — `^^#1`. (Try `^#1` once and read what the error suggests.)",
+    ],
+    solution: String.raw`def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_bin {
+        I(.*) => inc_bin(to_bin(^^#1))
+    ||  ^$    => 0
+}
+
+print(to_bin(IIIII))
+`,
+    tests: [
+        { call: "to_bin(IIIII)",    expected: "101" },
+        { call: "to_bin()",         expected: "0" },
+        { call: "to_bin(IIIIIIII)", expected: "1000" },
+    ],
+},
+{
+    id: "mul",
+    title: "unary multiplication",
+    difficulty: "medium",
+    blurb: "Write `mul` for two unary numbers separated by &: mul(III&II) \u21d2 IIIIII.",
+    template: String.raw`// ── challenge: unary multiplication ─────────────────
+// Numbers in unary again: III means 3. Write a
+// function 'mul' that multiplies two unary numbers
+// separated by &:
+//
+//     mul(III&II)  ⇒  IIIIII
+//     mul(&III)    ⇒          (empty: 0·3=0)
+
+def mul {
+    pattern => output
+}
+
+print(mul(III&II))
+`,
+    hints: [
+        "Peel one I off the left number per step and emit one full copy of the right number next to the recursive call: n\u00b7m = (n\u22121)\u00b7m + m.",
+        "Don't emit the copy in front of the call: a register call swallows one following ghost char (that is what makes `#1~1` work), so `#2~mul(\u2026)` collapses into a call named IImul. Put the copy after the call instead: `mul(^#1&^#2)#2`.",
+    ],
+    solution: String.raw`def mul {
+        I(.*)&(.*) => mul(^#1&^#2)#2
+    ||  &.*        =>
+}
+
+print(mul(III&II))
+`,
+    tests: [
+        { call: "mul(III&II)",  expected: "IIIIII" },
+        { call: "mul(II&IIII)", expected: "IIIIIIII" },
+        { call: "mul(&III)",    expected: "" },
+        { call: "mul(III&)",    expected: "" },
+    ],
+},
+{
+    id: "sort",
+    title: "sort by rewriting",
+    difficulty: "medium",
+    blurb: "Sort a string over the alphabet a,b,c: sort(bacab) \u21d2 aabbc. Sorting as a terminating rewriting system.",
+    template: String.raw`// ── challenge: sort by rewriting ────────────────────
+// Sort a string over the alphabet {a, b, c}:
+//
+//     sort(cba)    ⇒  abc
+//     sort(bacab)  ⇒  aabbc
+//
+// No positions, no counters — think purely in terms
+// of local rewrites.
+
+def sort {
+    pattern => output
+}
+
+print(sort(bacab))
+`,
+    hints: [
+        "You never need to find the right position for anything. Fix one local inversion per step: rewrite any adjacent out-of-order pair (ba, ca, cb) into its sorted version and recurse.",
+        "Four arms: one per inversion, e.g. `(.*)ba(.*) => sort(^#1ab^#2)`, plus a final catch-all `(.*) => #1` that fires once no inversion is left. Every swap removes exactly one inversion, so this terminates.",
+    ],
+    solution: String.raw`def sort {
+        (.*)ba(.*) => sort(^#1ab^#2)
+    ||  (.*)ca(.*) => sort(^#1ac^#2)
+    ||  (.*)cb(.*) => sort(^#1bc^#2)
+    ||  (.*)       => #1
+}
+
+print(sort(bacab))
+`,
+    tests: [
+        { call: "sort(cba)",    expected: "abc" },
+        { call: "sort(bacab)",  expected: "aabbc" },
+        { call: "sort(ccbbaa)", expected: "aabbcc" },
+        { call: "sort(abc)",    expected: "abc" },
+    ],
+},
+{
+    id: "dec_bin",
+    title: "binary decrement",
+    difficulty: "easy",
+    blurb: "The mirror image of inc_bin: write dec_bin so that dec_bin(1000) \u21d2 111 and dec_bin(1) \u21d2 0. inc_bin is given as a model.",
+    template: String.raw`// ── challenge: binary decrement ─────────────────────
+// You know inc_bin from the examples (given below as
+// a model). Write its mirror image 'dec_bin':
+//
+//     dec_bin(110)   ⇒  101
+//     dec_bin(1000)  ⇒  111
+//     dec_bin(10)    ⇒  1     (no leading zero!)
+//     dec_bin(1)     ⇒  0
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def dec_bin {
+    pattern => output
+}
+
+print(dec_bin(1000))
+`,
+    hints: [
+        "Mirror inc_bin: the rightmost 1 becomes 0, and all zeros to its right become ones. You will want a helper to_ones, the twin of to_zeros.",
+        "Two edge cases the mirror does not give you: dec_bin(1) must be 0 (special arm `^1$ => 0`), and dec_bin(10) must be 1 rather than 01 — split into `(.+)1(0*)` (a nonempty prefix keeps its digits) and `1(0*)` (a leading 1 disappears entirely).",
+    ],
+    solution: String.raw`def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+printt(dec_bin(1000))
+`,
+    tests: [
+        { call: "dec_bin(1)",    expected: "0" },
+        { call: "dec_bin(10)",   expected: "1" },
+        { call: "dec_bin(110)",  expected: "101" },
+        { call: "dec_bin(1000)", expected: "111" },
+        { call: "dec_bin(101)",  expected: "100" },
+    ],
+},
+{
+    id: "add_bin",
+    title: "binary addition",
+    difficulty: "medium",
+    blurb: "Using inc_bin and dec_bin, write add: add(101&11) \u21d2 1000. No carry logic — gloriously inefficient, but correct.",
+    template: String.raw`// ── challenge: binary addition ──────────────────────
+// Write 'add' for two binary numbers separated by &:
+//
+//     add(101&11)  ⇒  1000
+//     add(0&0)     ⇒  0
+//
+// The increment and decrement machinery is given.
+// No carry tables allowed — there is a two-arm
+// solution.
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def add {
+    pattern => output
+}
+
+print(add(101&11))
+`,
+    hints: [
+        "No carries needed: add(a&b) = add(a+1 & b\u22121), stopping at add(a&0) = a.",
+        "Two traps in the recursive call. Nested arguments are two levels deep: `^^#1`. And after `inc_bin(\u2026)` is replaced by its result, the following `&dec_bin` would merge into one call name — separate them with the ghost char: `\u2026&~dec_bin(\u2026)`.",
+    ],
+    solution: String.raw`def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def add {
+        (.*)&0    => #1
+    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+}
+
+print(add(101&11))
+`,
+    tests: [
+        { call: "add(101&11)", expected: "1000" },
+        { call: "add(1&1)",    expected: "10" },
+        { call: "add(0&0)",    expected: "0" },
+        { call: "add(1111&1)", expected: "10000" },
+    ],
+},
+{
+    id: "collatz",
+    title: "collatz",
+    difficulty: "medium",
+    blurb: "Count the Collatz steps of a binary number, answer in unary: collatz(110) \u21d2 IIIIIIII (6 \u2192 3 \u2192 10 \u2192 \u2026 \u2192 1 takes 8 steps).",
+    template: String.raw`// ── challenge: collatz ──────────────────────────────
+// Count how many Collatz steps a binary number needs
+// to reach 1; answer in unary (one I per step):
+//
+//     collatz(110)  ⇒  IIIIIIII    (6→3→10→5→16→8→4→2→1)
+//     collatz(1)    ⇒              (already there)
+//
+// The full binary toolkit is given. A helper for
+// 3n+1 is a good idea.
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def add {
+        (.*)&0    => #1
+    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+}
+
+def collatz {
+    pattern => output
+}
+
+print(collatz(110))
+`,
+    hints: [
+        "Three arms: stop at `^1$`; an even number ends in 0, and halving it is just dropping that 0; an odd number becomes 3n+1 — `inc_bin(triple(\u2026))` with a helper triple(n) = add(n & add(n&n)).",
+        "Patterns match anywhere unless you anchor them: `(.*)0` also matches inside 101, so write `(.*)0$`. And count carets per nesting level: the inner add in triple needs `^^#1`, and inside collatz's odd arm the register sits three calls deep — `^^^#1`. When in doubt, run it and read what the error suggests, or wrap the call in debug().",
+    ],
+    solution: String.raw`def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def add {
+        (.*)&0    => #1
+    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+}
+
+def triple {
+    (.*) => add(^#1&~add(^^#1&^^#1))
+}
+
+def collatz {
+        ^1$    =>
+    ||  (.*)0$ => I~collatz(^#1)
+    ||  (.*1)$ => I~collatz(inc_bin(triple(^^^#1)))
+}
+
+print(collatz(110))
+`,
+    tests: [
+        { call: "collatz(110)", expected: "IIIIIIII" },
+        { call: "collatz(101)", expected: "IIIII" },
+        { call: "collatz(111)", expected: "IIIIIIIIIIIIIIII" },
+        { call: "collatz(1)",   expected: "" },
+    ],
+},
+
+{
+    id: "for_loop",
+    title: "for loop",
+    difficulty: "medium",
+    blurb: "Metaprogramming: for(f: x, y, z) applies function f to every input \u2014 the function name is just data.",
+    template: String.raw`// ── challenge: for loop ─────────────────────────────
+// Write 'for' that takes a function name, a colon,
+// and a comma-separated list, and applies the
+// function to every element:
+//
+//     for(double: a, bb)       ⇒  aa bbbb
+//     for(inc_bin: 0, 1, 111)  ⇒  1 10 1000
+//
+// Two functions to loop over are given.
+
+def double { (.*) => #1#1 }
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def for {
+    pattern => output
+}
+
+print(for(double: a, bb))
+`,
+    hints: [
+        "Split off the first list element with `(\\w+):([^,]*),(.*)`, apply the function to it, and recurse on the rest; a second arm without the comma handles the last element.",
+        "The magic: a call is just text. The output `#1(^#2)` first substitutes the register \u2014 producing e.g. `double(a)` \u2014 and the rescan then executes that as a real call. You are constructing the program at runtime.",
+    ],
+    solution: String.raw`def double { (.*) => #1#1 }
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def for {
+        (\w+):([^,]*),(.*) => #1(^#2) for(^#1: ^#3)
+    ||  (\w+):(.*)         => #1(^#2)
+}
+
+print(for(double: a, bb))
+`,
+    tests: [
+        { call: "for(double: a, bb)",      expected: "aa bbbb" },
+        { call: "for(inc_bin: 0, 1, 111)", expected: "1 10 1000" },
+        { call: "for(double: xy)",         expected: "xyxy" },
+    ],
+},
+{
+    id: "mul_bin",
+    title: "binary multiplication",
+    difficulty: "hard",
+    blurb: "Shift and add: mul_bin(101&11) \u21d2 1111. Addition is given \u2014 the structure is its bigger sibling.",
+    template: String.raw`// ── challenge: binary multiplication ────────────────
+// Write 'mul_bin' for two binary numbers:
+//
+//     mul_bin(101&11)  ⇒  1111    (5·3 = 15)
+//     mul_bin(101&0)   ⇒  0
+//
+// The full toolkit including add is given. There is
+// a three-arm solution (think shift and add).
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def add {
+        (.*)&0    => #1
+    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+}
+
+def mul_bin {
+    pattern => output
+}
+
+print(mul_bin(101&11))
+`,
+    hints: [
+        "Shift and add: if b ends in 0, then a\u00b7b = (a0)\u00b7(b without its final 0) \u2014 doubling in binary is appending a 0, halving is dropping it. If b ends in 1, then a\u00b7b = a + a\u00b7(b\u22121). Base: anything times 0 is 0.",
+        "Appending a 0 to a register is the #1~1 trick again: `^#10` parses as register #10 \u2014 write `^#1~0`. And count carets in the odd arm: `add(^#1&~mul_bin(^^#1&~dec_bin(^^^#2)))`.",
+    ],
+    solution: String.raw`def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def add {
+        (.*)&0    => #1
+    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+}
+
+def mul_bin {
+        .*&0$       => 0
+    ||  (.*)&(.*)0$ => mul_bin(^#1~0&^#2)
+    ||  (.*)&(.*1)$ => add(^#1&~mul_bin(^^#1&~dec_bin(^^^#2)))
+}
+
+print(mul_bin(101&11))
+`,
+    tests: [
+        { call: "mul_bin(101&11)", expected: "1111" },
+        { call: "mul_bin(11&11)",  expected: "1001" },
+        { call: "mul_bin(10&10)",  expected: "100" },
+        { call: "mul_bin(101&0)",  expected: "0" },
+        { call: "mul_bin(0&101)",  expected: "0" },
+    ],
+},
+{
+    id: "radix",
+    title: "decimal \u21c4 binary",
+    difficulty: "expert",
+    blurb: "The grand finale: write to_binary and to_decimal \u2014 to_binary(13) \u21d2 1101, to_decimal(1101) \u21d2 13.",
+    template: String.raw`// ── challenge: decimal ⇄ binary ─────────────────────
+// Write both directions of base conversion:
+//
+//     to_binary(13)    ⇒  1101
+//     to_decimal(1101) ⇒  13
+//
+// The binary increment/decrement toolkit is given.
+// You will need to build their decimal counterparts
+// yourself — regex can't do arithmetic.
+
+def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def to_binary {
+    pattern => output
+}
+
+def to_decimal {
+    pattern => output
+}
+
+print(to_binary(13))
+print(to_decimal(1101))
+`,
+    hints: [
+        "No positional arithmetic needed: count down in one base while counting up in the other \u2014 to_binary(d) = inc_bin(to_binary(d\u22121)), and to_decimal is the exact mirror. You must build a decimal increment and decrement yourself; regex can't add, so enumerate: one arm per digit, e.g. `(.*)3(9*)$ => #1~4~nines_to_zeros(^#2)`.",
+        "Skip the leading-zero bookkeeping entirely: let the decimal decrement produce 09, 08, \u2026 and make the base case tolerant instead: `^0+$ => 0`. In `inc_bin(to_binary(dec_dec(\u2026)))` the register sits three calls deep: `^^^#1`.",
+    ],
+    solution: String.raw`def to_zeros {
+        1(.*) => 0~to_zeros(^#1)
+    ||        =>
+}
+
+def inc_bin {
+        (.*)0(1*) => #1~1~to_zeros(^#2)
+    ||  (1+)      => 1~to_zeros(^#1)
+    ||            => 1
+}
+
+def to_ones {
+        0(.*) => 1~to_ones(^#1)
+    ||        =>
+}
+
+def dec_bin {
+        ^1$       => 0
+    ||  (.+)1(0*) => #1~0~to_ones(^#2)
+    ||  1(0*)     => to_ones(^#1)
+}
+
+def to_nines {
+        0(.*) => 9~to_nines(^#1)
+    ||        =>
+}
+
+def dec_dec {
+        (.*)1(0*)$ => #1~0~to_nines(^#2)
+    ||  (.*)2(0*)$ => #1~1~to_nines(^#2)
+    ||  (.*)3(0*)$ => #1~2~to_nines(^#2)
+    ||  (.*)4(0*)$ => #1~3~to_nines(^#2)
+    ||  (.*)5(0*)$ => #1~4~to_nines(^#2)
+    ||  (.*)6(0*)$ => #1~5~to_nines(^#2)
+    ||  (.*)7(0*)$ => #1~6~to_nines(^#2)
+    ||  (.*)8(0*)$ => #1~7~to_nines(^#2)
+    ||  (.*)9(0*)$ => #1~8~to_nines(^#2)
+}
+
+def to_binary {
+        ^0+$ => 0
+    ||  (.*) => inc_bin(to_binary(dec_dec(^^^#1)))
+}
+
+def nines_to_zeros {
+        9(.*) => 0~nines_to_zeros(^#1)
+    ||        =>
+}
+
+def inc_dec {
+        (.*)0(9*)$ => #1~1~nines_to_zeros(^#2)
+    ||  (.*)1(9*)$ => #1~2~nines_to_zeros(^#2)
+    ||  (.*)2(9*)$ => #1~3~nines_to_zeros(^#2)
+    ||  (.*)3(9*)$ => #1~4~nines_to_zeros(^#2)
+    ||  (.*)4(9*)$ => #1~5~nines_to_zeros(^#2)
+    ||  (.*)5(9*)$ => #1~6~nines_to_zeros(^#2)
+    ||  (.*)6(9*)$ => #1~7~nines_to_zeros(^#2)
+    ||  (.*)7(9*)$ => #1~8~nines_to_zeros(^#2)
+    ||  (.*)8(9*)$ => #1~9~nines_to_zeros(^#2)
+    ||  (9+)       => 1~nines_to_zeros(^#1)
+}
+
+def to_decimal {
+        ^0$  => 0
+    ||  (.*) => inc_dec(to_decimal(dec_bin(^^^#1)))
+}
+
+print(to_binary(13))
+print(to_decimal(1101))
+`,
+    tests: [
+        { call: "to_binary(13)",             expected: "1101" },
+        { call: "to_binary(0)",              expected: "0" },
+        { call: "to_decimal(1101)",          expected: "13" },
+        { call: "to_decimal(10101)",         expected: "21" },
+        { call: "to_decimal(to_binary(21))", expected: "21" },
+    ],
+},
+];
+
+let activeChallenge = null;
+let hintsShown = 0;
+let activeCheck = null;
+
+const chPanel = document.getElementById("challenge-panel");
+const chName = document.getElementById("ch-name");
+const chDiff = document.getElementById("ch-diff");
+const chSolvedBadge = document.getElementById("ch-solved");
+const chBlurb = document.getElementById("ch-blurb");
+const chHintBtn = document.getElementById("ch-hint");
+const chHints = document.getElementById("ch-hints");
+const chSolutionBtn = document.getElementById("ch-solution");
+const chSolutionBox = document.getElementById("ch-solution-box");
+const chSolutionCode = document.getElementById("ch-solution-code");
+const chCheckBtn = document.getElementById("ch-check");
+const chResults = document.getElementById("ch-results");
+const chFold = document.getElementById("ch-fold");
+
+function setCollapsed(collapsed) {
+    chPanel.classList.toggle("collapsed", collapsed);
+    chFold.innerHTML = collapsed ? "&#9656;" : "&#9662;";
+}
+
+chFold.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setCollapsed(!chPanel.classList.contains("collapsed"));
+});
+
+/* the whole header is a click target for collapsing — except its buttons */
+document.getElementById("ch-head").addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    setCollapsed(!chPanel.classList.contains("collapsed"));
+});
+
+function solvedSet() {
+    try { return new Set(JSON.parse(localStorage.getItem("subtext.solved") || "[]")); }
+    catch (e) { return new Set(); }
+}
+
+function markSolved(id) {
+    const s = solvedSet();
+    s.add(id);
+    try { localStorage.setItem("subtext.solved", JSON.stringify([...s])); } catch (e) {}
+    renderChallengesMenu();
+}
+
+const DIFFICULTY_ORDER = ["easy", "medium", "hard", "expert"];
+
+function renderChallengesMenu() {
+    const panel = challengesMenu.panel;
+    panel.innerHTML = "";
+    const s = solvedSet();
+    for (const tier of DIFFICULTY_ORDER) {
+        const group = CHALLENGES.filter((c) => c.difficulty === tier);
+        if (!group.length) continue;
+        const sec = document.createElement("div");
+        sec.className = "menu-section " + tier;
+        sec.textContent = tier;
+        panel.appendChild(sec);
+        for (const ch of group) {
+            panel.appendChild(menuItem(ch.title, ch.blurb, () => openChallenge(ch), s.has(ch.id)));
+        }
+    }
+    document.getElementById("ch-count").textContent =
+        "\u00b7 " + [...s].filter((id) => CHALLENGES.some((c) => c.id === id)).length + "/" + CHALLENGES.length;
+}
+renderChallengesMenu();
+
+function openChallenge(ch) {
+    activeChallenge = ch;
+    hintsShown = 0;
+    activeCheck = null;
+    chName.textContent = "challenge \u00b7 " + ch.title;
+    chDiff.textContent = ch.difficulty;
+    chDiff.className = "diff " + ch.difficulty;
+    chSolvedBadge.hidden = !solvedSet().has(ch.id);
+    chBlurb.textContent = ch.blurb;
+    chHints.innerHTML = "";
+    chResults.innerHTML = "";
+    chSolutionBox.hidden = true;
+    chSolutionBtn.textContent = "show solution";
+    setCollapsed(false);
+    updateHintButton();
+    chPanel.classList.add("open");
+    setEditorContent(ch.template);
+    editor.focus();
+}
+
+document.getElementById("ch-close").addEventListener("click", () => {
+    chPanel.classList.remove("open");
+    activeChallenge = null;
+    activeCheck = null;
+});
+
+function updateHintButton() {
+    const total = activeChallenge ? activeChallenge.hints.length : 0;
+    chHintBtn.disabled = hintsShown >= total;
+    chHintBtn.textContent = hintsShown >= total
+        ? "no more hints"
+        : "show hint (" + (hintsShown + 1) + "/" + total + ")";
+}
+
+chHintBtn.addEventListener("click", () => {
+    if (!activeChallenge || hintsShown >= activeChallenge.hints.length) return;
+    const div = document.createElement("div");
+    div.className = "hint";
+    div.textContent = "hint " + (hintsShown + 1) + ": " + activeChallenge.hints[hintsShown];
+    chHints.appendChild(div);
+    hintsShown++;
+    updateHintButton();
+});
+
+/* show solution is a toggle now, so the (often long) code block can be put away */
+chSolutionBtn.addEventListener("click", () => {
+    if (!activeChallenge) return;
+    if (chSolutionBox.hidden) {
+        chSolutionCode.textContent = activeChallenge.solution;
+        chSolutionBox.hidden = false;
+        chSolutionBtn.textContent = "hide solution";
+    } else {
+        chSolutionBox.hidden = true;
+        chSolutionBtn.textContent = "show solution";
+    }
+});
+
+document.getElementById("ch-load-solution").addEventListener("click", () => {
+    if (!activeChallenge) return;
+    setEditorContent(activeChallenge.solution);
+    editor.focus();
+});
+
+chCheckBtn.addEventListener("click", () => {
+    if (!activeChallenge || running || !wasmReady) return;
+    const tests = activeChallenge.tests;
+    activeCheck = { challenge: activeChallenge, tests, received: [] };
+    chResults.textContent = "checking\u2026";
+    const harness = tests.map((t) => "print(" + t.call + ")").join("\n");
+    const code = editor.getValue() + "\n\n// \u2500\u2500 challenge check \u2500\u2500\n" + harness + "\n";
+    running = true;
+    runBtn.disabled = true;
+    stopBtn.disabled = false;
+    terminal.textContent = "";
+    printBuffer = [];
+    setStatus("running", "checking\u2026");
+    worker.postMessage({ type: "run", code });
+});
+
+function finishCheck(ranOk) {
+    if (!activeCheck) return;
+    setCollapsed(false);
+    const { challenge, tests, received } = activeCheck;
+    activeCheck = null;
+    chResults.innerHTML = "";
+    if (!ranOk) {
+        const div = document.createElement("div");
+        div.className = "fail";
+        div.textContent = "\u2717 the program failed while checking \u2014 see the output pane";
+        chResults.appendChild(div);
+        return;
+    }
+    // the harness prints run last; compare the final N printed lines
+    const got = received.slice(-tests.length).map((s) => s.trim());
+    let all = got.length === tests.length;
+    tests.forEach((t, i) => {
+        const g = got[i];
+        const ok = g !== undefined && g === t.expected.trim();
+        all = all && ok;
+        const div = document.createElement("div");
+        div.className = ok ? "pass" : "fail";
+        div.textContent = ok
+            ? "\u2713 " + t.call + "  \u21d2  " + (t.expected === "" ? "\u27e8empty\u27e9" : t.expected)
+            : "\u2717 " + t.call + "  \u2014  expected \u27e8" + t.expected + "\u27e9, got \u27e8" + (g === undefined ? "nothing" : g) + "\u27e9";
+        chResults.appendChild(div);
+    });
+    if (all) {
+        const div = document.createElement("div");
+        div.className = "pass";
+        div.textContent = "all tests pass \u2014 solved!";
+        chResults.prepend(div);
+        chSolvedBadge.hidden = false;
+        markSolved(challenge.id);
+    }
+}
 
 /* ------------------------------------------------------------------ */
 

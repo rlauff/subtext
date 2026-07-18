@@ -1,23 +1,79 @@
-use crate::error::{BacktraceFrame, ErrorKind, SubtextError};
+use crate::error::{BacktraceFrame, ErrorKind, SubtextError, edit_distance, fmt_value};
 use crate::linked_chars::LinkedChars;
 
 use crate::scope::evaluate_scope;
 
+use std::cell::RefCell;
 use std::io::{self, Write};
 use std::{fs, vec};
+
+pub const RECURSION_LIMIT: usize = 1000;
+thread_local! { pub static MAX_DEPTH_PROBE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+
+pub const TRACE_STEP_LIMIT: usize = 1000;
+
+pub struct Trace {
+    pub steps: usize,
+    pub limit: usize,
+    pub truncated: bool,
+}
+
+impl Trace {
+    pub fn new(limit: usize) -> Self {
+        Self {
+            steps: 0,
+            limit,
+            truncated: false,
+        }
+    }
+}
 
 // An Interpreter gets passed a LinkedChars and is tasked to evaluate it until there are no further changes.
 // It will save regex matches into its own registers.
 // Its children may use the contents of these registers by using the ^ operator on register calls.
 pub struct Interpreter<'a> {
     pub state: LinkedChars,
-    pub history: Option<Vec<LinkedChars>>,
-
     // Example: { ab : (.)(.) : { ^$2 ^$1 : ba : it was ab; : it was not ab} }
     //          ^parent start   ^child start                                ^both end
     pub parent: Option<&'a Interpreter<'a>>,
     pub registers: Vec<String>,
     pub functions: Vec<Function>,
+    pub depth: usize,
+    pub context: String,
+    pub trace: Option<&'a RefCell<Trace>>,
+}
+
+impl Interpreter<'static> {
+    pub fn root(state: LinkedChars) -> Self {
+        Interpreter {
+            state,
+            parent: None,
+            registers: vec![],
+            functions: vec![],
+            depth: 0,
+            context: "program".to_string(),
+            trace: None,
+        }
+    }
+}
+
+impl Interpreter<'_> {
+    pub fn spawn_child(
+        &self,
+        state: LinkedChars,
+        registers: Vec<String>,
+        context: String,
+    ) -> Interpreter<'_> {
+        Interpreter {
+            state,
+            parent: Some(self),
+            registers,
+            functions: vec![],
+            depth: self.depth + 1,
+            context,
+            trace: self.trace,
+        }
+    }
 }
 
 // Helper to easily switch parsing logic between round and curly braces.
@@ -64,6 +120,9 @@ enum Task {
         prompt: String,
     },
     PrintOutput {
+        content: String,
+    },
+    PrintOutputRaw {
         content: String,
     },
     GetFile {
@@ -241,7 +300,10 @@ fn get_new_job(linked_chars: &LinkedChars, reader_idx: usize) -> Result<Job, Sub
                         prompt: full_string,
                     },
                     "get_file" => Task::GetFile { path: full_string },
-                    "print_output" => Task::PrintOutput {
+                    "print" => Task::PrintOutput {
+                        content: full_string,
+                    },
+                    "print_raw" => Task::PrintOutputRaw {
                         content: full_string,
                     },
                     "debug" => Task::Debug {
@@ -367,6 +429,19 @@ pub struct Function {
 
 impl Interpreter<'_> {
     pub fn evaluate(&mut self) -> Result<(), SubtextError> {
+        MAX_DEPTH_PROBE.with(|m| {
+            let v = m.get().max(self.depth);
+            m.set(v);
+        });
+        if self.depth >= RECURSION_LIMIT {
+            return Err(self.attach_backtrace_if_empty(
+                SubtextError::new(ErrorKind::RecursionLimitExceeded {
+                    limit: RECURSION_LIMIT,
+                }),
+                None,
+            ));
+        }
+
         // find jobs and apply the resp. changes until we get Chill back
         // After doing a Job, put the reading head at the start of the returned job.
         // This way, we read the output of the last evaluation back in immediately (for recursion).
@@ -379,25 +454,26 @@ impl Interpreter<'_> {
                 }
             };
             reading_head = job.start; // always read the replacement back in 
+
+            let caret_pos = self.state.get(job.start).next.unwrap_or(job.start);
+
+            // When a debug trace is active, capture the text that is
+            // about to be replaced, so each trace step can show ⟨old⟩ ⇒ ⟨new⟩.
+            let traced_old = match (&self.trace, &job.task) {
+                (Some(_), Task::Chill) | (None, _) => None,
+                (Some(_), _) => self.state.interval_to_string(job.start, job.end).ok(),
+            };
+
             match job.task {
                 Task::Chill => {
                     break; // return
                 }
                 Task::Scope { content: scope } => {
-                    // evaluate the scope
                     let result = evaluate_scope(scope, self, None)
-                        .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
+                        .map_err(|err| self.attach_backtrace_if_empty(err, Some(caret_pos)))?;
 
-                    //appends the scope history to the history vector
-                    if let Some(history) = self.history.as_mut() {
-                        for scope_history_state in result.1.unwrap_or_default() {
-                            let mut state_copy = self.state.clone();
-                            state_copy.replace_between(job.start, job.end, &scope_history_state);
-                            history.push(state_copy);
-                        }
-                    }
-                    // modify the state
-                    self.state.replace_between(job.start, job.end, &result.0);
+                    self.state.replace_between(job.start, job.end, &result);
+                    self.emit_trace("scope", traced_old, &result.make_string(), job.start);
                 }
 
                 Task::RegisterCall {
@@ -410,27 +486,29 @@ impl Interpreter<'_> {
                         .map_err(|err| self.attach_backtrace_if_empty(err, Some(position)))?;
                     let result = LinkedChars::from_iter(register_value.chars());
                     self.state.replace_between(job.start, job.end, &result);
-                    if let Some(history) = self.history.as_mut() {
-                        history.pop();
-                        history.push(self.state.clone())
-                    }
+                    let label = format!("register {}#{}", "^".repeat(level), requested_index);
+                    self.emit_trace(&label, traced_old, &register_value, job.start);
                 }
 
                 Task::DefineFunction { name, definition } => {
                     // when looking for a function, we will look through this vector in reverse.
-                    // This way a new definition will shadow a potential old one
+                    // This way a new definition will shadow a old one
+                    let label = format!("define {}", name);
                     self.functions.push(Function {
                         name,
                         body: definition,
                     });
                     self.state.remove_between(job.start, job.end);
+                    self.emit_trace(&label, traced_old, "", job.start);
                 }
 
                 Task::FunctionCall {
                     function_name,
                     input,
                 } => {
-                    let function = self.find_function_definition(function_name.clone())?;
+                    let function = self
+                        .find_function_definition(function_name.clone())
+                        .map_err(|err| self.attach_backtrace_if_empty(err, Some(caret_pos)))?;
 
                     let trimmed_input = input.trim();
                     let clean_input =
@@ -450,18 +528,11 @@ impl Interpreter<'_> {
 
                     let scope = format!("{{ {} :: {} }}", clean_input, clean_body);
                     let result = evaluate_scope(scope, self, Some(&function_name))
-                        .map_err(|err| self.attach_backtrace_if_empty(err, None))?;
+                        .map_err(|err| self.attach_backtrace_if_empty(err, Some(caret_pos)))?;
 
-                    //appends the scope history to the history vector
-                    if let Some(history) = self.history.as_mut() {
-                        for scope_history_state in result.1.unwrap_or_default() {
-                            let mut state_copy = self.state.clone();
-                            state_copy.replace_between(job.start, job.end, &scope_history_state);
-                            history.push(state_copy);
-                        }
-                    }
-
-                    self.state.replace_between(job.start, job.end, &result.0);
+                    self.state.replace_between(job.start, job.end, &result);
+                    let label = format!("call {}", function_name);
+                    self.emit_trace(&label, traced_old, &result.make_string(), job.start);
                 }
 
                 Task::GetInput { prompt } => {
@@ -488,6 +559,7 @@ impl Interpreter<'_> {
                     let clean_response = response.trim().to_string();
                     let ls = LinkedChars::from_iter(clean_response.chars());
                     self.state.replace_between(job.start, job.end, &ls);
+                    self.emit_trace("get_input", traced_old, &clean_response, job.start);
                 }
 
                 Task::GetFile { path } => {
@@ -511,6 +583,7 @@ impl Interpreter<'_> {
                     let trimmed_content = file_content.trim().to_string();
                     let ls = LinkedChars::from_iter(trimmed_content.chars());
                     self.state.replace_between(job.start, job.end, &ls);
+                    self.emit_trace("get_file", traced_old, &trimmed_content, job.start);
                 }
 
                 Task::PrintOutput { content } => {
@@ -520,69 +593,101 @@ impl Interpreter<'_> {
                         content
                     };
 
-                    if !inner_content.starts_with('\'') {
-                        // in this case we evaluate first
-                        let lc = LinkedChars::from_iter(inner_content.chars());
-                        let mut interpreter = Interpreter {
-                            state: lc,
-                            registers: self.registers.clone(),
-                            parent: Some(self),
-                            functions: vec![],
-                            history: None,
-                        };
-                        interpreter.evaluate()?;
-                        inner_content = interpreter.state.make_string();
-                    }
+                    let lc = LinkedChars::from_iter(inner_content.chars());
+                    let mut interpreter = self.spawn_child(
+                        lc,
+                        self.registers.clone(),
+                        "argument of print_output".to_string(),
+                    );
+                    interpreter.evaluate()?;
+                    inner_content = interpreter.state.make_string();
                     crate::subtext_println!("{}", inner_content);
                     self.state.remove_between(job.start, job.end);
+                    self.emit_trace("print_output", traced_old, "", job.start);
+                }
+
+                Task::PrintOutputRaw { content } => {
+                    crate::subtext_println!("{}", content);
                 }
 
                 Task::Debug { content } => {
-                    let mut inner_content = if content.starts_with('(') && content.ends_with(')') {
-                        content[1..content.len() - 1].to_string()
-                    } else {
-                        content
-                    };
-
-                    if !inner_content.starts_with('\'') {
-                        // in this case we evaluate first
-                        let lc = LinkedChars::from_iter(inner_content.chars());
-                        let lc_clone = lc.clone();
-                        let mut interpreter = Interpreter {
-                            state: lc,
-                            registers: self.registers.clone(),
-                            parent: self.parent,
-                            functions: vec![],
-                            history: Some(vec![lc_clone]), // initialize history tracking
-                        };
-
-                        interpreter.evaluate()?;
-                        inner_content = interpreter.state.make_string();
-
-                        match interpreter.history.as_ref() {
-                            Some(history) => {
-                                println!("--- Debug History ---");
-                                for (i, state) in history.iter().enumerate() {
-                                    println!("\n\nStep {}: {}", i + 1, state.make_string());
-                                }
-                                println!("--- End of Debug History ---");
-                            }
-                            None => {
-                                return Err(self.attach_backtrace_if_empty(
-                                    SubtextError::new(ErrorKind::InternalInvariant {
-                                        message: "Debug task must have a history vec".to_string(),
-                                    }),
-                                    None,
-                                ));
-                            }
-                        }
-                    }
-
+                    self.run_debug(content)?;
                     self.state.remove_between(job.start, job.end);
                 }
             }
         }
         Ok(())
+    }
+
+    fn run_debug(&self, content: String) -> Result<(), SubtextError> {
+        let inner_content = if content.starts_with('(') && content.ends_with(')') {
+            content[1..content.len() - 1].to_string()
+        } else {
+            content
+        };
+
+        crate::subtext_println!("── debug ──");
+        let trace_cell = RefCell::new(Trace::new(TRACE_STEP_LIMIT));
+
+        let lc = LinkedChars::from_iter(inner_content.chars());
+        let mut interpreter =
+            self.spawn_child(lc, self.registers.clone(), "argument of debug".to_string());
+        interpreter.trace = Some(&trace_cell);
+        // if the traced evaluation fails, close the trace block explicitly
+        // before propagating, so the trace and the error report are visually separated.
+        if let Err(err) = interpreter.evaluate() {
+            let steps = trace_cell.borrow().steps;
+            crate::subtext_println!("── debug aborted by error after {} step(s) ──", steps);
+            return Err(err);
+        }
+        let final_state = interpreter.state.make_string();
+
+        let trace = trace_cell.borrow();
+        crate::subtext_println!(
+            "── end debug: {} step(s), result {} ──",
+            trace.steps,
+            fmt_value(&final_state, 120)
+        );
+        Ok(())
+    }
+
+    fn emit_trace(&self, label: &str, old: Option<String>, new: &str, position: usize) {
+        let Some(cell) = self.trace else {
+            return;
+        };
+        let mut trace = cell.borrow_mut();
+        trace.steps += 1;
+        if trace.steps > trace.limit {
+            if !trace.truncated {
+                trace.truncated = true;
+                crate::subtext_println!(
+                    "… debug trace truncated after {} steps (evaluation continues) …",
+                    trace.limit
+                );
+            }
+            return;
+        }
+
+        let old = old.unwrap_or_default();
+        crate::subtext_println!(
+            "step {:>4} │ {}: {} ⇒ {}",
+            trace.steps,
+            label,
+            fmt_value(&old, 60),
+            fmt_value(new, 60)
+        );
+        let window = self
+            .state
+            .make_snippet(Some(position), crate::error::SNIPPET_MAX);
+        let pre = if window.clipped_start { "…" } else { "" };
+        let post = if window.clipped_end { "…" } else { "" };
+        crate::subtext_println!(
+            "          │ state ⟨{}{}{}⟩   ({})",
+            pre,
+            window.text,
+            post,
+            self.context
+        );
     }
 
     fn find_function_definition(&self, name: String) -> Result<&Function, SubtextError> {
@@ -603,10 +708,35 @@ impl Interpreter<'_> {
             }
         }
 
-        Err(self.attach_backtrace_if_empty(
-            SubtextError::new(ErrorKind::UndefinedFunction { name }),
-            None,
-        ))
+        let mut visible: Vec<String> = Vec::new();
+        let mut current_interpreter = Some(self);
+        while let Some(interp) = current_interpreter {
+            for func in interp.functions.iter().rev() {
+                if !visible.contains(&func.name) {
+                    visible.push(func.name.clone());
+                }
+            }
+            current_interpreter = interp.parent;
+        }
+
+        let ghost_hint = visible
+            .iter()
+            .find(|f| name.ends_with(f.as_str()) && name.as_str() != f.as_str())
+            .cloned();
+
+        let suggestion = visible
+            .iter()
+            .map(|f| (edit_distance(&name, f), f))
+            .filter(|(d, f)| *d <= 2.max(f.chars().count() / 3))
+            .min_by_key(|(d, _)| *d)
+            .map(|(_, f)| f.clone());
+
+        Err(SubtextError::new(ErrorKind::UndefinedFunction {
+            name,
+            visible,
+            suggestion,
+            ghost_hint,
+        }))
     }
 
     fn get_register_at_level(
@@ -621,9 +751,23 @@ impl Interpreter<'_> {
                 current = parent_ref;
                 depth_reached += 1;
             } else {
+                let mut suggestion = None;
+                if requested_index >= 1 {
+                    let mut probe = Some(self);
+                    let mut lvl = 0;
+                    while let Some(interp) = probe {
+                        if requested_index - 1 < interp.registers.len() {
+                            suggestion = Some(format!("{}#{}", "^".repeat(lvl), requested_index));
+                            break;
+                        }
+                        probe = interp.parent;
+                        lvl += 1;
+                    }
+                }
                 return Err(SubtextError::new(ErrorKind::MissingParentScope {
                     requested_level: level,
                     actual_depth: depth_reached,
+                    suggestion,
                 }));
             }
         }
@@ -677,14 +821,18 @@ impl Interpreter<'_> {
 
         while let Some(interpreter) = current {
             let snippet = if depth == 0 {
-                interpreter.state.make_snippet(highlight, 80)
+                interpreter
+                    .state
+                    .make_snippet(highlight, crate::error::SNIPPET_MAX)
             } else {
-                interpreter.state.make_snippet(None, 80)
+                interpreter
+                    .state
+                    .make_snippet(None, crate::error::SNIPPET_MAX)
             };
 
             frames.push(BacktraceFrame {
                 depth,
-                full_state: interpreter.state.clone(),
+                context: interpreter.context.clone(),
                 state_snippet: snippet,
                 registers: interpreter.registers.clone(),
                 defined_functions: interpreter
@@ -713,12 +861,8 @@ impl Interpreter<'_> {
         err
     }
 
-    pub(crate) fn attach_backtrace_without_highlight(&self, mut err: SubtextError) -> SubtextError {
-        if err.backtrace.is_empty() {
-            err.backtrace = self.build_backtrace(None);
-        }
-        err
-    }
+    // the caller in evaluate() together with the job position, so the innermost caret
+    // points at the failing scope/call.
 
     fn highlight_from_error_kind(&self, kind: &ErrorKind) -> Option<usize> {
         match kind {
@@ -798,7 +942,7 @@ mod tests {
 
     #[test]
     fn test_get_new_job_built_in_functions() {
-        let lc = LinkedChars::from_iter("print_output(123)".chars());
+        let lc = LinkedChars::from_iter("print(123)".chars());
         let job = get_new_job(&lc, 0).unwrap();
 
         assert_eq!(job.start, 0);
@@ -867,13 +1011,7 @@ mod tests {
         let lc = LinkedChars::from_iter(
             "def f { a => hello, world! || b => goodby, moon! }f(a) f(b)".chars(),
         );
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(
             interpreter.state.make_string(),
@@ -886,13 +1024,7 @@ mod tests {
         let lc = LinkedChars::from_iter(
             "def f { a => hello, world! || b => g(b) }def g { a => f(b) || b => f(a) }f(b)".chars(),
         );
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string(), "hello, world!".to_string());
     }
@@ -907,13 +1039,7 @@ mod tests {
                 ||    &             => =}longer(abc&cde) longer(ab&c) longer(a&ab)"
                 .chars(),
         );
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string(), "= > <".to_string());
     }
@@ -931,13 +1057,7 @@ mod tests {
             inc_bin(1011)"
                 .chars(),
         );
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "1100".to_string());
     }
@@ -945,13 +1065,7 @@ mod tests {
     #[test]
     fn define_function_with_newlines() {
         let lc = LinkedChars::from_iter("def\nadd_positive { a => ok } add_positive(a)".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "ok");
@@ -960,13 +1074,7 @@ mod tests {
     #[test]
     fn function_call_using_ghost_char() {
         let lc = LinkedChars::from_iter("def f { (a) => ok } f(a)".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "ok");
@@ -975,13 +1083,7 @@ mod tests {
     #[test]
     fn test_missing_register_digit_error() {
         let lc = LinkedChars::from_iter("#".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected MissingRegisterDigit error");
@@ -996,13 +1098,7 @@ mod tests {
     #[test]
     fn test_missing_function_name_error() {
         let lc = LinkedChars::from_iter("def { a => b }".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected MissingFunctionName error");
@@ -1013,13 +1109,7 @@ mod tests {
     #[test]
     fn test_missing_function_body_error() {
         let lc = LinkedChars::from_iter("def name".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected MissingFunctionBody error");
@@ -1030,13 +1120,7 @@ mod tests {
     #[test]
     fn test_undefined_function_error() {
         let lc = LinkedChars::from_iter("foo()".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected UndefinedFunction error");
@@ -1051,13 +1135,7 @@ mod tests {
     #[test]
     fn test_register_out_of_bounds_error() {
         let lc = LinkedChars::from_iter("{ a :: (a) => #3 }".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected RegisterOutOfBounds error");
@@ -1068,13 +1146,7 @@ mod tests {
     #[test]
     fn test_register_call_trailing_whitespace_is_not_ignored() {
         let lc = LinkedChars::from_iter("{ a :: (a) => #1 1 }".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "a 1");
@@ -1083,13 +1155,7 @@ mod tests {
     #[test]
     fn test_register_calling_ghost_char() {
         let lc = LinkedChars::from_iter("{ a :: (a) => #1~1 }".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "a1");
@@ -1098,13 +1164,7 @@ mod tests {
     #[test]
     fn test_register_suggestion_from_parent() {
         let lc = LinkedChars::from_iter("{ ab :: (a)(b) => { ok :: ok => #2 } }".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected RegisterOutOfBounds error");
@@ -1120,13 +1180,7 @@ mod tests {
     #[test]
     fn test_register_index_starts_at_one() {
         let lc = LinkedChars::from_iter("#0".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected RegisterIndexStartsAtOne error");
@@ -1140,13 +1194,7 @@ mod tests {
     #[test]
     fn test_missing_parent_scope_error() {
         let lc = LinkedChars::from_iter("^^#1".chars());
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         let result = interpreter.evaluate();
         assert!(result.is_err(), "Expected MissingParentScope error");
@@ -1160,13 +1208,7 @@ mod tests {
             "def swap { (.)(.) => #2#1 } def swap_back { (.)(.) => #2#1 } swap(swap_back(ab))"
                 .chars(),
         );
-        let mut interpreter = Interpreter {
-            state: lc,
-            registers: vec![],
-            functions: vec![],
-            parent: None,
-            history: None,
-        };
+        let mut interpreter = Interpreter::root(lc);
 
         interpreter.evaluate().expect("Evaluation failed");
         assert_eq!(interpreter.state.make_string().trim(), "ab");
