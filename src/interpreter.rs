@@ -597,17 +597,28 @@ impl Interpreter<'_> {
                     let mut interpreter = self.spawn_child(
                         lc,
                         self.registers.clone(),
-                        "argument of print_output".to_string(),
+                        "argument of print".to_string(),
                     );
                     interpreter.evaluate()?;
                     inner_content = interpreter.state.make_string();
                     crate::subtext_println!("{}", inner_content);
                     self.state.remove_between(job.start, job.end);
-                    self.emit_trace("print_output", traced_old, "", job.start);
+                    self.emit_trace("print", traced_old, "", job.start);
                 }
 
                 Task::PrintOutputRaw { content } => {
-                    crate::subtext_println!("{}", content);
+                    // TODO(review): three fixes. (1) The call must remove itself from the
+                    // state — without remove_between the reading head finds the same
+                    // print_raw again and loops forever. (2) The surrounding parens are
+                    // stripped like in print. (3) The step is traced for debug().
+                    let inner = if content.starts_with('(') && content.ends_with(')') {
+                        &content[1..content.len() - 1]
+                    } else {
+                        content.as_str()
+                    };
+                    crate::subtext_println!("{}", inner);
+                    self.state.remove_between(job.start, job.end);
+                    self.emit_trace("print_raw", traced_old, "", job.start);
                 }
 
                 Task::Debug { content } => {
@@ -946,7 +957,7 @@ mod tests {
         let job = get_new_job(&lc, 0).unwrap();
 
         assert_eq!(job.start, 0);
-        assert_eq!(job.end, 17);
+        assert_eq!(job.end, 10); // "print(123)" is 10 chars (was 17 for print_output)
         assert_eq!(
             job.task,
             Task::PrintOutput {

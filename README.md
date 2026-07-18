@@ -64,7 +64,7 @@ For IO and debugging, we provide the following built-in functions:
 * **`get_input(prompt)`:** Takes a prompt, prints it to stdout and expects user input via stdin. Then it replaces itself by that input.
 * **`print(content)`:** Evaluates its argument, prints the result, and then replaces itself by the empty string.
 * **`print_raw(content)`:** Prints its content as is, without evaluating it first.
-* **`debug(expr)`:** Evaluates `expr` exactly like `print_output` would, but streams every rewrite step while doing so: each step shows what was rewritten (`⟨old⟩ ⇒ ⟨new⟩`) together with a window of the surrounding state and where the rewrite happened (input/output of which scope or call). The call then replaces itself by the empty string; the evaluated result is printed in the trailer but *not* substituted back. `debug('raw)` prints the argument verbatim without evaluating it. Traces are capped at 1000 steps.
+* **`debug(expr)`:** Evaluates `expr` exactly like `print` would, but streams every rewrite step while doing so: each step shows what was rewritten (`⟨old⟩ ⇒ ⟨new⟩`) together with a window of the surrounding state and where the rewrite happened (input/output of which scope or call). The call then replaces itself by the empty string; the evaluated result is printed in the trailer but *not* substituted back. For unevaluated verbatim output use `print_raw`. Traces are capped at 1000 steps.
 
 ### Errors
 
@@ -91,7 +91,7 @@ def inc_bin {
     ||            => 1                
 }
 
-print_output(inc_bin(1011)) // 1100
+print(inc_bin(1011)) // 1100
 ```
 
 ### Compare
@@ -131,10 +131,10 @@ def compare {
     ||  &([<,>,=])                      => #1 // numbers have the same length, return the current state
 }
 
-print_output(compare(1234&1235)) // <
-print_output(compare(1234&1234)) // =
-print_output(compare(1235&1234)) // >
-print_output(compare(999&1000))  // <
+print(compare(1234&1235)) // <
+print(compare(1234&1234)) // =
+print(compare(1235&1234)) // >
+print(compare(999&1000))  // <
 ```
 
 ### Turing Machine
@@ -189,7 +189,7 @@ def turing {
     || (.*) => turing(state_table(START) B>^#1) // initialize the call
 }
 
-print_output(turing(1011001))
+print(turing(1011001))
 ```
 
 ### Fibonacci
@@ -290,7 +290,7 @@ def fibonacci {
    || (\d+)                   => fibonacci(1 1 1 ^#1)
 }
 
-print_output(fibonacci(100))
+print(fibonacci(100))
 ```
 
 ### Variables and arrays
@@ -311,26 +311,26 @@ def init_array {
 
 // displays an array, one element per line
 def display_array {
-    (.+) => print_output(displaying array ^#1:) display_array_inner(^#1_values())
+    (.+) => print(displaying array ^#1:) display_array_inner(^#1_values())
 }
 
 // takes the string of values |a|b|c ... and prints them
 def display_array_inner {
-        ^\|([^|]+)(.*)$ => print_output(^#1) display_array_inner(^#2)
+        ^\|([^|]+)(.*)$ => print(^#1) display_array_inner(^#2)
     ||  => 
 }
 
 set_var(x=1)
 set_var(y=2)
-print_output(x = get_var_x())
-print_output(y = get_var_y())
+print(x = get_var_x())
+print(y = get_var_y())
 
 init_array(arr)
 arr_push(1)
 arr_push(2)
 arr_push(3)
 arr_push(4)
-print_output(array arr values string: arr_values())
+print(array arr values string: arr_values())
 display_array(arr)
 
 ```

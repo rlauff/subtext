@@ -21,7 +21,7 @@ def display_array {
 
 // takes the string of values |a|b|c ... and prints them
 def display_array_inner {
-        ^\|([^|]+)(.*)$ => print_output(^#1) display_array_inner(^#2)
+        ^\|([^|]+)(.*)$ => print(^#1) display_array_inner(^#2)
     ||  => 
 }
 

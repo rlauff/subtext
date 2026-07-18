@@ -9,4 +9,4 @@ def inc_bin {
     ||            => 1               
 }
 
-print_output(inc_bin(1011))
+print(inc_bin(1011))
