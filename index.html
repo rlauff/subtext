@@ -453,6 +453,8 @@ body.running .divider span {
 .cm-comment          { color: var(--faint); font-style: italic; }
 .cm-subtext-ghost    { color: var(--faint); }                    /* ~          */
 .cm-subtext-pattern  { color: var(--rose); }                     /* regex      */
+.cm-subtext-protection { color: var(--arrow); }                  /* [ and ]    */
+.cm-subtext-protected  { font-style: italic; }                   /* inside [ ] */
 
 /* ---------- output terminal ---------- */
 
@@ -949,9 +951,9 @@ print({ 10 :: (.*) => #1~1 })
 // rewrite step: what was replaced, by what, and
 // where. Wrap it around anything that confuses you.
 
-def swap { (.*)&(.*) => #2&#1 }
+def swap { (.*), (.*) => #2, #1 }
 
-debug(swap(left&right))
+debug(swap(left, right))
 `,
 },
 ];
@@ -1187,37 +1189,37 @@ print(check(><))
     id: "min",
     title: "unary minimum",
     difficulty: "easy",
-    blurb: "Numbers in unary: III means 3. Write `min` for two unary numbers separated by &: min(III&IIIII) \u21d2 III.",
+    blurb: "Numbers in unary: III means 3. Write `min` for two comma-separated unary numbers: min(III, IIIII) \u21d2 III.",
     template: String.raw`// ── challenge: unary minimum ────────────────────────
 // Numbers are written in unary: III means 3, the
 // empty string means 0. Write a function 'min' that
-// takes two unary numbers separated by & and rewrites
+// takes two comma-separated unary numbers and rewrites
 // to the smaller one:
 //
-//     min(III&IIIII)  ⇒  III
-//     min(&IIII)      ⇒         (empty: min(0,4)=0)
+//     min(III, IIIII)  ⇒  III
+//     min(, IIII)      ⇒         (empty: min(0,4)=0)
 
 def min {
     pattern => output
 }
 
-print(min(III&IIIII))
+print(min(III, IIIII))
 `,
     hints: [
         "Strip one I from both sides per step and emit one I in front of the recursive call; stop as soon as either side runs out.",
-        "Emitted text merges with what follows: `Imin(\u2026)` parses as a call to a function named Imin. Separate them with the ghost char: `I~min(^#1&^#2)`.",
+        "Emitted text merges with what follows: `Imin(\u2026)` parses as a call to a function named Imin. Separate them with the ghost char: `I~min(^#1, ^#2)`.",
     ],
     solution: String.raw`def min {
-        I(.*)&I(.*) => I~min(^#1&^#2)
-    ||  .*&.*       =>
+        I(.*), I(.*) => I~min(^#1, ^#2)
+    ||  .*,.*        =>
 }
 
-print(min(III&IIIII))
+print(min(III, IIIII))
 `,
     tests: [
-        { call: "min(III&IIIII)", expected: "III" },
-        { call: "min(IIIII&II)",  expected: "II" },
-        { call: "min(&IIII)",     expected: "" },
+        { call: "min(III, IIIII)", expected: "III" },
+        { call: "min(IIIII, II)",  expected: "II" },
+        { call: "min(, IIII)",     expected: "" },
     ],
 },
 {
@@ -1283,37 +1285,37 @@ print(to_bin(IIIII))
     id: "mul",
     title: "unary multiplication",
     difficulty: "medium",
-    blurb: "Write `mul` for two unary numbers separated by &: mul(III&II) \u21d2 IIIIII.",
+    blurb: "Write `mul` for two comma-separated unary numbers: mul(III, II) \u21d2 IIIIII.",
     template: String.raw`// ── challenge: unary multiplication ─────────────────
 // Numbers in unary again: III means 3. Write a
-// function 'mul' that multiplies two unary numbers
-// separated by &:
+// function 'mul' that multiplies two comma-separated
+// unary numbers:
 //
-//     mul(III&II)  ⇒  IIIIII
-//     mul(&III)    ⇒          (empty: 0·3=0)
+//     mul(III, II)  ⇒  IIIIII
+//     mul(, III)    ⇒          (empty: 0·3=0)
 
 def mul {
     pattern => output
 }
 
-print(mul(III&II))
+print(mul(III, II))
 `,
     hints: [
         "Peel one I off the left number per step and emit one full copy of the right number next to the recursive call: n\u00b7m = (n\u22121)\u00b7m + m.",
-        "Don't emit the copy in front of the call: a register call swallows one following ghost char (that is what makes `#1~1` work), so `#2~mul(\u2026)` collapses into a call named IImul. Put the copy after the call instead: `mul(^#1&^#2)#2`.",
+        "Don't emit the copy in front of the call: a register call swallows one following ghost char (that is what makes `#1~1` work), so `#2~mul(\u2026)` collapses into a call named IImul. Put the copy after the call instead: `mul(^#1, ^#2)#2`.",
     ],
     solution: String.raw`def mul {
-        I(.*)&(.*) => mul(^#1&^#2)#2
-    ||  &.*        =>
+        I(.*),\s*(.*) => mul(^#1, ^#2)#2
+    ||  ^,.*          =>
 }
 
-print(mul(III&II))
+print(mul(III, II))
 `,
     tests: [
-        { call: "mul(III&II)",  expected: "IIIIII" },
-        { call: "mul(II&IIII)", expected: "IIIIIIII" },
-        { call: "mul(&III)",    expected: "" },
-        { call: "mul(III&)",    expected: "" },
+        { call: "mul(III, II)",  expected: "IIIIII" },
+        { call: "mul(II, IIII)", expected: "IIIIIIII" },
+        { call: "mul(, III)",    expected: "" },
+        { call: "mul(III, )",    expected: "" },
     ],
 },
 {
@@ -1427,12 +1429,12 @@ print(dec_bin(1000))
     id: "add_bin",
     title: "binary addition",
     difficulty: "medium",
-    blurb: "Using inc_bin and dec_bin, write add: add(101&11) \u21d2 1000. No carry logic — gloriously inefficient, but correct.",
+    blurb: "Using inc_bin and dec_bin, write add: add(101, 11) \u21d2 1000. No carry logic — gloriously inefficient, but correct.",
     template: String.raw`// ── challenge: binary addition ──────────────────────
-// Write 'add' for two binary numbers separated by &:
+// Write 'add' for two comma-separated binary numbers:
 //
-//     add(101&11)  ⇒  1000
-//     add(0&0)     ⇒  0
+//     add(101, 11)  ⇒  1000
+//     add(0, 0)     ⇒  0
 //
 // The increment and decrement machinery is given.
 // No carry tables allowed — there is a two-arm
@@ -1464,11 +1466,11 @@ def add {
     pattern => output
 }
 
-print(add(101&11))
+print(add(101, 11))
 `,
     hints: [
-        "No carries needed: add(a&b) = add(a+1 & b\u22121), stopping at add(a&0) = a.",
-        "Two traps in the recursive call. Nested arguments are two levels deep: `^^#1`. And after `inc_bin(\u2026)` is replaced by its result, the following `&dec_bin` would merge into one call name — separate them with the ghost char: `\u2026&~dec_bin(\u2026)`.",
+        "No carries needed: add(a, b) = add(a+1, b\u22121), stopping at add(a, 0) = a.",
+        "Nested arguments are two levels deep: inside `add(inc_bin(\u2026), \u2026)` the register is `^^#1`. Keep the space after the comma: without it, `,dec_bin` would merge with the text before it into one call name.",
     ],
     solution: String.raw`def to_zeros {
         1(.*) => 0~to_zeros(^#1)
@@ -1493,17 +1495,17 @@ def dec_bin {
 }
 
 def add {
-        (.*)&0    => #1
-    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+        (.*), 0    => #1
+    ||  (.*), (.*) => add(inc_bin(^^#1), dec_bin(^^#2))
 }
 
-print(add(101&11))
+print(add(101, 11))
 `,
     tests: [
-        { call: "add(101&11)", expected: "1000" },
-        { call: "add(1&1)",    expected: "10" },
-        { call: "add(0&0)",    expected: "0" },
-        { call: "add(1111&1)", expected: "10000" },
+        { call: "add(101, 11)", expected: "1000" },
+        { call: "add(1, 1)",    expected: "10" },
+        { call: "add(0, 0)",    expected: "0" },
+        { call: "add(1111, 1)", expected: "10000" },
     ],
 },
 {
@@ -1544,8 +1546,8 @@ def dec_bin {
 }
 
 def add {
-        (.*)&0    => #1
-    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+        (.*), 0    => #1
+    ||  (.*), (.*) => add(inc_bin(^^#1), dec_bin(^^#2))
 }
 
 def collatz {
@@ -1555,7 +1557,7 @@ def collatz {
 print(collatz(110))
 `,
     hints: [
-        "Three arms: stop at `^1$`; an even number ends in 0, and halving it is just dropping that 0; an odd number becomes 3n+1 — `inc_bin(triple(\u2026))` with a helper triple(n) = add(n & add(n&n)).",
+        "Three arms: stop at `^1$`; an even number ends in 0, and halving it is just dropping that 0; an odd number becomes 3n+1 — `inc_bin(triple(\u2026))` with a helper triple(n) = add(n, add(n, n)).",
         "Patterns match anywhere unless you anchor them: `(.*)0` also matches inside 101, so write `(.*)0$`. And count carets per nesting level: the inner add in triple needs `^^#1`, and inside collatz's odd arm the register sits three calls deep — `^^^#1`. When in doubt, run it and read what the error suggests, or wrap the call in debug().",
     ],
     solution: String.raw`def to_zeros {
@@ -1581,12 +1583,12 @@ def dec_bin {
 }
 
 def add {
-        (.*)&0    => #1
-    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+        (.*), 0    => #1
+    ||  (.*), (.*) => add(inc_bin(^^#1), dec_bin(^^#2))
 }
 
 def triple {
-    (.*) => add(^#1&~add(^^#1&^^#1))
+    (.*) => add(^#1, add(^^#1, ^^#1))
 }
 
 def collatz {
@@ -1673,12 +1675,12 @@ print(for(double: a, bb))
     id: "mul_bin",
     title: "binary multiplication",
     difficulty: "hard",
-    blurb: "Shift and add: mul_bin(101&11) \u21d2 1111. Addition is given \u2014 the structure is its bigger sibling.",
+    blurb: "Shift and add: mul_bin(101, 11) \u21d2 1111. Addition is given \u2014 the structure is its bigger sibling.",
     template: String.raw`// ── challenge: binary multiplication ────────────────
 // Write 'mul_bin' for two binary numbers:
 //
-//     mul_bin(101&11)  ⇒  1111    (5·3 = 15)
-//     mul_bin(101&0)   ⇒  0
+//     mul_bin(101, 11)  ⇒  1111    (5·3 = 15)
+//     mul_bin(101, 0)   ⇒  0
 //
 // The full toolkit including add is given. There is
 // a three-arm solution (think shift and add).
@@ -1706,19 +1708,19 @@ def dec_bin {
 }
 
 def add {
-        (.*)&0    => #1
-    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+        (.*), 0    => #1
+    ||  (.*), (.*) => add(inc_bin(^^#1), dec_bin(^^#2))
 }
 
 def mul_bin {
     pattern => output
 }
 
-print(mul_bin(101&11))
+print(mul_bin(101, 11))
 `,
     hints: [
         "Shift and add: if b ends in 0, then a\u00b7b = (a0)\u00b7(b without its final 0) \u2014 doubling in binary is appending a 0, halving is dropping it. If b ends in 1, then a\u00b7b = a + a\u00b7(b\u22121). Base: anything times 0 is 0.",
-        "Appending a 0 to a register is the #1~1 trick again: `^#10` parses as register #10 \u2014 write `^#1~0`. And count carets in the odd arm: `add(^#1&~mul_bin(^^#1&~dec_bin(^^^#2)))`.",
+        "Appending a 0 to a register is the #1~1 trick again: `^#10` parses as register #10 \u2014 write `^#1~0`. And count carets in the odd arm: `add(^#1, mul_bin(^^#1, dec_bin(^^^#2)))`.",
     ],
     solution: String.raw`def to_zeros {
         1(.*) => 0~to_zeros(^#1)
@@ -1743,24 +1745,24 @@ def dec_bin {
 }
 
 def add {
-        (.*)&0    => #1
-    ||  (.*)&(.*) => add(inc_bin(^^#1)&~dec_bin(^^#2))
+        (.*), 0    => #1
+    ||  (.*), (.*) => add(inc_bin(^^#1), dec_bin(^^#2))
 }
 
 def mul_bin {
-        .*&0$       => 0
-    ||  (.*)&(.*)0$ => mul_bin(^#1~0&^#2)
-    ||  (.*)&(.*1)$ => add(^#1&~mul_bin(^^#1&~dec_bin(^^^#2)))
+        .*, 0$       => 0
+    ||  (.*), (.*)0$ => mul_bin(^#1~0, ^#2)
+    ||  (.*), (.*1)$ => add(^#1, mul_bin(^^#1, dec_bin(^^^#2)))
 }
 
-print(mul_bin(101&11))
+print(mul_bin(101, 11))
 `,
     tests: [
-        { call: "mul_bin(101&11)", expected: "1111" },
-        { call: "mul_bin(11&11)",  expected: "1001" },
-        { call: "mul_bin(10&10)",  expected: "100" },
-        { call: "mul_bin(101&0)",  expected: "0" },
-        { call: "mul_bin(0&101)",  expected: "0" },
+        { call: "mul_bin(101, 11)", expected: "1111" },
+        { call: "mul_bin(11, 11)",  expected: "1001" },
+        { call: "mul_bin(10, 10)",  expected: "100" },
+        { call: "mul_bin(101, 0)",  expected: "0" },
+        { call: "mul_bin(0, 101)",  expected: "0" },
     ],
 },
 {

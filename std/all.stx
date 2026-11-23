@@ -1,0 +1,15 @@
+// ── std/all.stx ───────────────────────────────────────────────────────────
+// Loads the whole standard library:
+//
+//     std/error.stx    error
+//     std/math.stx     add sub mul div mod inc dec cmp min max
+//     std/string.stx   len rev upper lower repeat slice eq contains index_of
+//     std/list.stx     split join count nth
+//
+// Each file loads the files it depends on itself, so you can also load just
+// the one you need. Paths are relative to the directory the interpreter is
+// started in, so run your program from the root of this repository:
+//
+//     get_file(std/all.stx)
+
+get_file(std/list.stx)

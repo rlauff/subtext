@@ -1,0 +1,16 @@
+// ── std/error.stx ─────────────────────────────────────────────────────────
+// Raising errors on purpose.
+//
+//     error(msg)   stops the program and reports msg as the failing input
+//
+// Example:
+//     error(expected a number)
+//
+// There is no special error built-in: error() evaluates a scope whose
+// only arm can never match (end of input followed by a character).
+// The interpreter then reports a no-matching-arm error with msg as the input,
+// together with the usual backtrace.
+
+def error {
+    (?s)^(.*)$ => { ^#1 :: $.^raised by error => }
+}

@@ -1,0 +1,238 @@
+// ── std/string.stx ────────────────────────────────────────────────────────
+// Working with text.
+//
+//     len(s)                  number of characters
+//     rev(s)                  s backwards
+//     upper(s)   lower(s)     change the case of a-z
+//     repeat(s, n)            s written n times
+//     slice(s, from, to)      characters from index from up to (not including) index to
+//     eq(a, b)                y if a and b are the same text, n otherwise
+//     contains(s, part)       y if part occurs in s, n otherwise
+//     index_of(s, part)       index of the first occurrence of part in s, or -1
+//
+// Indices start at 0. Arguments are separated by ", ". The text arguments
+// are split at the last ", ", so only the first one may contain ", ".
+// Like all function inputs, the arguments are trimmed: leading and trailing
+// whitespace is lost.
+//
+// Example:
+//     print(upper(rev(hello)))            // OLLEH
+//     print(index_of(hello world, o))     // 4
+//
+// Note that text passed around is read back in by the interpreter like any
+// other code. Text containing { } [ ] # ~ or a word directly followed by ( is
+// evaluated instead of being passed along.
+
+
+get_file(std/math.stx)
+
+
+// ---- how the loops work ----------------------------------------------------
+//
+// A function walking over long text cannot simply call itself: every nested
+// call is evaluated one level deeper, and the interpreter stops at 1000 levels.
+// Instead, the loops below return their next call wrapped in protection
+// braces, e.g.
+//
+//     #1[~_upper(>]#2[)]
+//
+// The braces stop the call from being evaluated inside the function. They are
+// stripped when the function returns, so the call text lands in the caller and
+// is evaluated there, at the caller's level. This way a loop of any length
+// stays at constant depth.
+//
+// The > in front of the remaining text is a marker that keeps its leading
+// whitespace from being trimmed away. It is removed again by the next step.
+//
+// Step by step, print(upper(ab)) runs like this:
+//
+//     upper(ab)            calls _upper(>ab)
+//     _upper(>ab)          matches with #1 = "", #2 = a, #3 = b and evaluates
+//                          its output #1~~_upper_char(^#2)[~_upper(>]#3[)].
+//                          Everything outside the braces is evaluated now:
+//                          #1~~_upper_char(^#2) becomes A and #3 becomes b,
+//                          giving A[~_upper(>]b[)]
+//     returning            strips one layer of braces: A~_upper(>b)
+//     the caller           finds the call ~_upper(>b) in its own text and
+//                          runs it the same way, until it ends up with AB
+//
+// The ~ in front of _upper ends the call name. Without it, the interpreter
+// would read the text in front of the call as part of the name (here: A_upper).
+//
+// Outside the braces, the output can still compute the arguments of the next
+// step. In _len below, [~_len(]~inc(^#1), #2[)] counts up right away and
+// returns e.g. ~_len(3, rest of the text).
+
+
+// ---- length, reversing, case -----------------------------------------------
+
+// counts ten characters per step; state: number of tens, text left
+// the last (at most nine) characters become the final digit
+def _len {
+        (?s)^(\d+), ..........(.*)$ => [~_len(]~inc(^#1), #2[)]
+    ||  (?s)^(\d+), (.*)$           => _norm(^#1~~_len_digit(>^^#2))
+    ||  ^(\d+),$                   => _norm(^#1~0)
+}
+
+// the length of a text shorter than ten characters
+def _len_digit {
+        (?s)^>$          => 0
+    ||  (?s)^>.$         => 1
+    ||  (?s)^>..$        => 2
+    ||  (?s)^>...$       => 3
+    ||  (?s)^>....$      => 4
+    ||  (?s)^>.....$     => 5
+    ||  (?s)^>......$    => 6
+    ||  (?s)^>.......$   => 7
+    ||  (?s)^>........$  => 8
+    ||  (?s)^>.........$ => 9
+}
+
+def len {
+    (?s)^(.*)$ => _len(0, ^#1)
+}
+
+// moves the first character behind the reversed rest
+def _rev {
+        (?s)^>(.)(.*)$ => [~_rev(>]#2[)]#1
+    ||  ^>$            =>
+}
+
+def rev {
+    (?s)^(.*)$ => _rev(>^#1)
+}
+
+def _upper_char {
+        a => A || b => B || c => C || d => D || e => E || f => F || g => G
+    ||  h => H || i => I || j => J || k => K || l => L || m => M || n => N
+    ||  o => O || p => P || q => Q || r => R || s => S || t => T || u => U
+    ||  v => V || w => W || x => X || y => Y || z => Z
+}
+
+def _lower_char {
+        A => a || B => b || C => c || D => d || E => e || F => f || G => g
+    ||  H => h || I => i || J => j || K => k || L => l || M => m || N => n
+    ||  O => o || P => p || Q => q || R => r || S => s || T => t || U => u
+    ||  V => v || W => w || X => x || Y => y || Z => z
+}
+
+// skips ahead to the next lowercase letter, converts it and continues behind it
+def _upper {
+        (?s)^>([^a-z]*)([a-z])(.*)$ => #1~~_upper_char(^#2)[~_upper(>]#3[)]
+    ||  (?s)^>(.*)$                 => #1
+}
+
+def upper {
+    (?s)^(.*)$ => _upper(>^#1)
+}
+
+def _lower {
+        (?s)^>([^A-Z]*)([A-Z])(.*)$ => #1~~_lower_char(^#2)[~_lower(>]#3[)]
+    ||  (?s)^>(.*)$                 => #1
+}
+
+def lower {
+    (?s)^(.*)$ => _lower(>^#1)
+}
+
+
+// ---- repeating and slicing -------------------------------------------------
+
+// emits one copy of s, followed by the call for the remaining n - 1 copies
+def repeat {
+        (?s)^(.*), 0*$      =>
+    ||  (?s)^(.*), (\d+)$   => #1[~repeat(]#1, ~dec(^#2)[)]
+}
+
+// builds a scope whose pattern skips "from" characters and then captures
+// up to "to - from" characters: { text :: (?s)^.{from}(.{0,count}) => #1 || => }
+//
+// The output is the scope with holes, the way it is explained in the
+// searching section below. The holes are #1 (the text), #2 (from) and the
+// count computed by ~max(...). The #1 at the end is inside the braces, so it
+// is not slice's #1 but the capture of the built scope: the cut-out part.
+def slice {
+    (?s)^(.*), (\d+), (\d+)$ =>
+        [{ ]#1[ :: (?s)^.{]#2[}(.{0,]~max(0, sub(^^#3, ^^#2))[}) => #1 || => }]
+}
+
+
+// ---- searching -------------------------------------------------------------
+
+// Rust's regex engine has no backreferences, so a pattern cannot check whether
+// two captured texts are equal. Instead, these functions build a new scope
+// whose pattern is the searched-for text itself:
+//
+//     eq(abc, abd)   becomes   { abc :: (?s)^abd$ => y || => n }
+//
+// The output of eq is written as a scope with holes:
+//
+//     [{ ]#1[ :: (?s)^]~_escape(>^#2)[$ => y || => n }]
+//
+// The parts in braces are copied as they are, the parts between them are
+// evaluated first. For eq(abc, abd):
+//
+//     [{ ]                    gives  {
+//     #1                      gives  abc
+//     [ :: (?s)^]             gives   :: (?s)^
+//     ~_escape(>^#2)          gives  abd
+//     [$ => y || => n }]      gives  $ => y || => n }
+//
+// Without the braces, the interpreter would evaluate the scope at once, before
+// its holes are filled. With them, eq returns the finished scope, and the
+// caller evaluates it.
+//
+// Registers follow the same rule: a register outside the braces is one of
+// the function's own registers, a register inside them belongs to the built
+// scope and refers to what its pattern captured. index_of uses both.
+//
+// Before the text is put into a pattern, _escape replaces every character
+// that has a meaning in regex, every comma and all whitespace by an escape
+// sequence, e.g. . => \x2E and a space => \x20. All other characters stay as
+// they are. The escaped text never contains ", ", which std/list.stx relies on.
+
+def _hex {
+        ^\\$   => \x5C
+    ||  ^\.$   => \x2E
+    ||  ^\+$   => \x2B
+    ||  ^\*$   => \x2A
+    ||  ^\?$   => \x3F
+    ||  ^\|$   => \x7C
+    ||  ^\$$   => \x24
+    ||  ^\^$   => \x5E
+    ||  ^\x28$ => \x28
+    ||  ^\x29$ => \x29
+    ||  ^,$    => \x2C
+}
+
+// whitespace gets its own arms: as a function input, a lone space would be trimmed away
+def _escape {
+        (?s)^>([^\\.+*?|$^() ,\n\t]*) (.*)$                         => #1\x20[~_escape(>]#2[)]
+    ||  (?s)^>([^\\.+*?|$^() ,\n\t]*)\n(.*)$                        => #1\n[~_escape(>]#2[)]
+    ||  (?s)^>([^\\.+*?|$^() ,\n\t]*)\t(.*)$                        => #1\t[~_escape(>]#2[)]
+    ||  (?s)^>([^\\.+*?|$^() ,\n\t]*)([\\.+*?|$^(),])(.*)$          => #1~~_hex(^#2)[~_escape(>]#3[)]
+    ||  (?s)^>(.*)$                                                  => #1
+}
+
+def eq {
+        (?s)^(.*), (.*)$ => [{ ]#1[ :: (?s)^]~_escape(>^#2)[$ => y || => n }]
+    ||  (?s)^(.*),$      => [{ ]#1[ :: ^$ => y || => n }]
+}
+
+def contains {
+        (?s)^(.*), (.*)$ => [{ ]#1[ :: (?s)]~_escape(>^#2)[ => y || => n }]
+    ||  (?s)^(.*),$      => y
+}
+
+// captures everything from the first occurrence on; the index is len(s) minus its length
+// (measuring the part before the occurrence instead would lose its trailing whitespace)
+//
+// In the output, ~len(^#1) sits between the braces, so it measures index_of's
+// own #1, the whole text, right away. The len(^^#1) after it is inside the
+// braces: it runs later in the built scope, where #1 is the captured rest.
+// It has two carets because it is nested in sub( ), like the arguments of
+// any nested call.
+def index_of {
+        (?s)^(.*), (.*)$ => [{ ]#1[ :: (?s)^.*?(]~_escape(>^#2)[.*)$ => ~sub(]~len(^#1)[, len(^^#1)) || => -1 }]
+    ||  (?s)^(.*),$      => 0
+}

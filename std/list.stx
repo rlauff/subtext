@@ -1,0 +1,102 @@
+// ── std/list.stx ──────────────────────────────────────────────────────────
+// Lists of text.
+//
+//     split(s, sep)    cuts s at every sep:            split(a-b-c, -)    => |a|b|c
+//     join(list, sep)  glues the items with sep:       join(|a|b|c, +)    => a+b+c
+//     count(list)      number of items:                count(|a|b|c)      => 3
+//     nth(list, i)     the item at index i (from 0):   nth(|a|b|c, 1)     => b
+//
+// A list is written as its items, each one preceded by a |, like in the
+// array example: |a|b|c. The empty list is the empty text. Items cannot
+// contain |.
+//
+// Since arguments are trimmed, a separator cannot begin or end with whitespace.
+// An empty separator therefore stands for a single space:
+//     split(hello big world, )    => |hello|big|world
+//     join(|hello|world, )        => hello world
+// A separator also cannot contain ", ", because the arguments are split at the last ", ".
+//
+// The loops work like the ones in std/string.stx: each step hands its next
+// call back to the caller in protection braces, so lists of any length work.
+
+
+get_file(std/string.stx)
+
+
+// ---- count and nth ---------------------------------------------------------
+
+// state: count so far, items left
+def _count {
+        (?s)^(\d+), \|[^|]*(.*)$ => [~_count(]~inc(^#1), #2[)]
+    ||  ^(\d+),$                 => #1
+}
+
+def count {
+    (?s)^(.*)$ => _count(0, ^#1)
+}
+
+// builds a scope whose pattern skips i items and captures the next one:
+// { list :: (?s)^(?:\|[^|]*){i}\|([^|]*) => #1 || => error(...) }
+//
+// This is a scope with holes, see the searching section of std/string.stx.
+// The error call is inside the braces, so it is part of the built scope and
+// only runs if that scope's first arm does not match. The ]#2[ in the
+// message fills in the index.
+//
+// The [^|] in the pattern are regex classes, but the interpreter also counts
+// them as protection braces while skipping the protected text. This works
+// because they come in pairs: the inner pair is just kept, and only the
+// outer layer is stripped when nth returns.
+def nth {
+    (?s)^(.*), (\d+)$ =>
+        [{ ]#1[ :: (?s)^(?:\|[^|]*){]#2[}\|([^|]*) => #1 || => ~error(index ]#2[ is out of range) }]
+}
+
+
+// ---- split -----------------------------------------------------------------
+
+// state: escaped separator, > marker, text left
+// builds a scope that cuts the text at the first separator, emits the part
+// before it as an item and continues with the rest:
+// { >text :: (?s)^>(.*?)SEP(.*)$ => |#1~_split(SEP, >#2) || (?s)^>(.*)$ => |#1 }
+//
+// This combines a scope with holes (see the searching section of
+// std/string.stx) with a loop step, so the braces are nested two deep:
+//
+//     |#1[~_split(]]#1[, >#2[)]
+//
+// At ]]#1[ both layers are closed, so this #1 is _split's own #1, the
+// separator, filled in now. Returning from _split strips the outer layer,
+// leaving the built scope with the output
+//
+//     |#1[~_split(]SEP, >#2[)]
+//
+// in which #1 and #2 are now the scope's captures. When that scope returns,
+// the second layer is stripped and the caller runs the next _split step,
+// just like in the other loops.
+def _split {
+    (?s)^([^,]*), >(.*)$ =>
+        [{ >]#2[ :: (?s)^>(.*?)]#1[(.*)$ => |#1[~_split(]]#1[, >#2[)] || (?s)^>(.*)$ => |#1 }]
+}
+
+def split {
+        (?s)^(.*), (.+)$ => _split(_escape(>^^#2), >^#1)
+    ||  (?s)^(.*),$      => _split(\x20, >^#1)
+}
+
+
+// ---- join ------------------------------------------------------------------
+
+// state: <separator>, items left
+// the < > around the separator keep its whitespace from being trimmed
+def _join {
+        (?s)^<(.*?)>, \|([^|]*)(\|.*)$ => #2#1[~_join(<]#1[>, ]#3[)]
+    ||  (?s)^<(.*?)>, \|([^|]*)$       => #2
+    ||  (?s)^<(.*?)>,$                 =>
+}
+
+def join {
+        (?s)^(\|.*), ([^|]*)$  => _join(<^#2>, ^#1)
+    ||  (?s)^(\|.*),$          => _join(< >, ^#1)
+    ||  (?s)^(?:,.*)?$         =>
+}

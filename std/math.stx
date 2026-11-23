@@ -1,0 +1,284 @@
+// ── std/math.stx ──────────────────────────────────────────────────────────
+// Integer arithmetic on decimal numbers.
+//
+//     add(a, b)   sub(a, b)   mul(a, b)   div(a, b)   mod(a, b)
+//     inc(n)      dec(n)      cmp(a, b)   min(a, b)   max(a, b)
+//
+// Numbers are plain decimal text with an optional leading minus: 42, -7, 0.
+// Since a number is just text, there is no size limit.
+// Arguments are separated by ", " (a bare "," works too).
+//
+// div and mod round towards negative infinity (floored division), so
+// div(-7, 2) is -4 and mod(-7, 2) is 1: mod(a, b) always has the sign of b.
+// cmp returns one of <, = or >.
+//
+// Example:
+//     print(mul(123456789, 987654321))    // 121932631112635269
+//
+// Names starting with _ are internal helpers.
+
+get_file(std/error.stx)
+
+
+// ---- digit helpers ---------------------------------------------------------
+
+// a digit as a unary number: 3 => III
+def _unary {
+        0 =>
+    ||  1 => I
+    ||  2 => II
+    ||  3 => III
+    ||  4 => IIII
+    ||  5 => IIIII
+    ||  6 => IIIIII
+    ||  7 => IIIIIII
+    ||  8 => IIIIIIII
+    ||  9 => IIIIIIIII
+}
+
+// a unary number below ten as a digit: III => 3
+def _digit {
+        ^$          => 0
+    ||  ^I$         => 1
+    ||  ^II$        => 2
+    ||  ^III$       => 3
+    ||  ^IIII$      => 4
+    ||  ^IIIII$     => 5
+    ||  ^IIIIII$    => 6
+    ||  ^IIIIIII$   => 7
+    ||  ^IIIIIIII$  => 8
+    ||  ^IIIIIIIII$ => 9
+}
+
+// the nines' complement of a digit: 3 => 6
+def _nine {
+        0 => 9
+    ||  1 => 8
+    ||  2 => 7
+    ||  3 => 6
+    ||  4 => 5
+    ||  5 => 4
+    ||  6 => 3
+    ||  7 => 2
+    ||  8 => 1
+    ||  9 => 0
+}
+
+// adds two digits and a carry digit (0 or 1), all three written as one word
+// returns the new carry followed by the result digit: 751 => 13
+// the digits are added in unary, where adding is just writing them next to each other
+def _add_digits {
+    (\d)(\d)(\d) => {
+        _unary(^^#1)~_unary(^^#2)~_unary(^^#3)
+            ::  ^IIIIIIIIII(I*)$ => 1~_digit(^#1)
+            ||  ^(I*)$           => 0~_digit(^#1)
+    }
+}
+
+// subtracts digit b from digit a, using a carry digit c (written abc)
+// a - b = a + (9 - b) + 1 - 10, so this is addition with the nines' complement of b.
+// a carry of 0 means "borrow": the previous digit pair came out negative.
+// returns the new carry followed by the result digit: 371 => 06 (3 - 7 = -4 = 6 - 10)
+def _sub_digits {
+    (\d)(\d)(\d) => _add_digits(_nine(^^#2)^#1^#3)
+}
+
+
+// ---- sign helpers ----------------------------------------------------------
+
+// strips leading zeros, so that 007 => 7, 000 => 0 and -00 => 0
+def _norm {
+        ^0*(\d+)$  => #1
+    ||  ^-0*(\d+)$ => _neg(^#1)
+}
+
+// flips the sign of a normalized number: 5 => -5, -5 => 5, 0 => 0
+def _neg {
+        ^0$       => 0
+    ||  ^-(\d+)$  => #1
+    ||  ^(\d+)$   => -#1
+}
+
+
+// ---- unsigned addition and subtraction -------------------------------------
+
+// adds two non-negative numbers digit by digit, from right to left
+// state: a, b, carry, result so far
+// when one number runs out of digits, it is padded with a 0
+def _uadd {
+        ^(\d*)(\d),\s*(\d*)(\d),\s*(\d),\s*(\d*)$ =>
+            _uadd(^#1, ^#3, { _add_digits(^^^#2^^^#4^^^#5) :: (\d)(\d) => #1, #2^^#6 })
+    ||  ^,\s*(\d+),\s*(\d),\s*(\d*)$  => _uadd(0, ^#1, ^#2, ^#3)  // a ran out
+    ||  ^(\d+),\s*,\s*(\d),\s*(\d*)$  => _uadd(^#1, 0, ^#2, ^#3)  // b ran out
+    ||  ^,\s*,\s*1,\s*(\d*)$          => 1#1                      // final carry
+    ||  ^,\s*,\s*0,\s*(\d*)$          => #1
+}
+
+// subtracts two non-negative numbers digit by digit, from right to left
+// state: a, b, carry, result so far (the carry starts as 1, i.e. "no borrow")
+// returns the final carry and the digits: a carry of 0 means a < b
+def _usub_loop {
+        ^(\d*)(\d),\s*(\d*)(\d),\s*(\d),\s*(\d*)$ =>
+            _usub_loop(^#1, ^#3, { _sub_digits(^^^#2^^^#4^^^#5) :: (\d)(\d) => #1, #2^^#6 })
+    ||  ^,\s*(\d+),\s*(\d),\s*(\d*)$  => _usub_loop(0, ^#1, ^#2, ^#3)  // a ran out
+    ||  ^(\d+),\s*,\s*(\d),\s*(\d*)$  => _usub_loop(^#1, 0, ^#2, ^#3)  // b ran out
+    ||  ^,\s*,\s*(\d),\s*(\d*)$       => #1, #2
+}
+
+// a - b for non-negative a and b
+// if the subtraction ends with a borrow, then a < b and we compute -(b - a) instead
+def _usub {
+    ^(\d+),\s*(\d+)$ => {
+        _usub_loop(^^#1, ^^#2, 1, )
+            ::  ^1,\s*(\d*)$ => _norm(^#1)
+            ||  ^0,          => _neg(_usub(^^^#2, ^^^#1))
+    }
+}
+
+
+// ---- addition and subtraction ----------------------------------------------
+
+// the sign cases are reduced to adding or subtracting non-negative numbers
+def add {
+        ^(\d+),\s*(\d+)$    => _norm(_uadd(^^#1, ^^#2, 0, ))
+    ||  ^-(\d+),\s*-(\d+)$  => _neg(add(^^#1, ^^#2))  // -a + -b = -(a + b)
+    ||  ^-(\d+),\s*(\d+)$   => _usub(^#2, ^#1)        // -a + b  = b - a
+    ||  ^(\d+),\s*-(\d+)$   => _usub(^#1, ^#2)        //  a + -b = a - b
+}
+
+def sub {
+        ^(\d+),\s*(\d+)$    => _usub(^#1, ^#2)
+    ||  ^-(\d+),\s*-(\d+)$  => _usub(^#2, ^#1)        // -a - -b = b - a
+    ||  ^-(\d+),\s*(\d+)$   => _neg(add(^^#1, ^^#2))  // -a - b  = -(a + b)
+    ||  ^(\d+),\s*-(\d+)$   => add(^#1, ^#2)          //  a - -b = a + b
+}
+
+// inc and dec are used a lot (counting loops), so they get a faster path than add:
+// only the last digit that is not a 9 (or not a 0) changes, the trailing 9s (or 0s) flip
+
+def _succ { 0 => 1 || 1 => 2 || 2 => 3 || 3 => 4 || 4 => 5 || 5 => 6 || 6 => 7 || 7 => 8 || 8 => 9 }
+def _pred { 1 => 0 || 2 => 1 || 3 => 2 || 4 => 3 || 5 => 4 || 6 => 5 || 7 => 6 || 8 => 7 || 9 => 8 }
+
+// replaces every digit by a 0 (or by a 9): 999 => 000
+def _zeros { ^\d(\d*)$ => 0~_zeros(^#1) || ^$ => }
+def _nines { ^\d(\d*)$ => 9~_nines(^#1) || ^$ => }
+
+def inc {
+        ^(\d*)([0-8])(9*)$  => #1~~_succ(^#2)~_zeros(^#3)  // 129 => 130
+    ||  ^(9+)$              => 1~_zeros(^#1)               // 99  => 100
+    ||  ^-(\d+)$            => _neg(dec(^^#1))
+}
+
+def dec {
+        ^(\d*)([1-9])(0*)$  => _norm(^#1~~_pred(^^#2)~_nines(^^#3))  // 130 => 129
+    ||  ^0+$                => -1
+    ||  ^-(\d+)$            => _neg(inc(^^#1))
+}
+
+
+// ---- comparison ------------------------------------------------------------
+
+// compares by looking at the sign of a - b
+def cmp {
+    (.*) => {
+        sub(^^#1)
+            ::  ^-  => <
+            ||  ^0$ => =
+            ||  .   => >
+    }
+}
+
+def min {
+    ^(-?\d+),\s*(-?\d+)$ => { cmp(^^#1, ^^#2) :: > => ^#2 || . => ^#1 }
+}
+
+def max {
+    ^(-?\d+),\s*(-?\d+)$ => { cmp(^^#1, ^^#2) :: < => ^#2 || . => ^#1 }
+}
+
+
+// ---- multiplication --------------------------------------------------------
+
+// multiplies a non-negative number with a single digit by adding it up repeatedly
+// state: a, the digit as unary, result so far
+def _times_loop {
+        ^(\d+),\s*I(I*),\s*(\d+)$ => _times_loop(^#1, ^#2, add(^^#1, ^^#3))
+    ||  ^(\d+),\s*,\s*(\d+)$      => #2
+}
+
+def _times {
+    ^(\d+),\s*(\d)$ => _times_loop(^#1, _unary(^^#2), 0)
+}
+
+// long multiplication of two non-negative numbers, one digit of b at a time
+// state: a, digits of b still to do, zeros to shift by, result so far
+def _umul {
+        ^(\d+),\s*(\d*)(\d),\s*(0*),\s*(\d+)$ =>
+            _umul(^#1, ^#2, ^#4~0, add(^^#5, _times(^^^#1, ^^^#3)^^#4))
+    ||  ^(\d+),\s*,\s*0*,\s*(\d+)$ => #2
+}
+
+def mul {
+        ^(\d+),\s*(\d+)$    => _umul(^#1, ^#2, , 0)
+    ||  ^-(\d+),\s*-(\d+)$  => mul(^#1, ^#2)
+    ||  ^-(\d+),\s*(\d+)$   => _neg(mul(^^#1, ^^#2))
+    ||  ^(\d+),\s*-(\d+)$   => _neg(mul(^^#1, ^^#2))
+}
+
+
+// ---- division --------------------------------------------------------------
+
+// how often does b fit into r? (at most 9 times in long division)
+// state: b, r, count so far
+// returns the count and what is left of r: "count, rest"
+def _fit {
+    ^(\d+),\s*(\d+),\s*(\d)$ => {
+        cmp(^^#2, ^^#1)
+            ::  < => ^#3, ^#2
+            ||  . => _fit(^^#1, sub(^^^#2, ^^^#1), inc(^^^#3))
+    }
+}
+
+// long division of a non-negative number by a positive one, digit by digit from the left
+// state: b, digits of a still to do, quotient so far, remainder so far
+// returns "quotient, remainder"
+def _udivmod_loop {
+        ^(\d+),\s*(\d)(\d*),\s*(\d*),\s*(\d+)$ => {
+            _fit(^^#1, _norm(^^^#5^^^#2), 0)
+                :: ^(\d),\s*(\d+)$ => _udivmod_loop(^^#1, ^^#3, ^^#4^#1, ^#2)
+        }
+    ||  ^(\d+),\s*,\s*(\d*),\s*(\d+)$ => _norm(^#2), #3
+}
+
+def _udivmod {
+    ^(\d+),\s*(\d+)$ => _udivmod_loop(^#2, ^#1, , 0)
+}
+
+// floored division with signs, returns "quotient, remainder"
+// if the signs differ and the division is not exact, the quotient is rounded
+// down once more and the remainder moves to the other side of zero
+def _divmod {
+        ^-?\d+,\s*-?0+$     => error(division by zero)
+    ||  ^(\d+),\s*(\d+)$    => _udivmod(^#1, ^#2)
+    ||  ^-(\d+),\s*-(\d+)$  => {
+            _udivmod(^^#1, ^^#2) :: ^(\d+),\s*(\d+)$ => #1, _neg(^#2)
+        }
+    ||  ^-(\d+),\s*(\d+)$   => {
+            _udivmod(^^#1, ^^#2)
+                ::  ^(\d+),\s*0$      => _neg(^#1), 0
+                ||  ^(\d+),\s*(\d+)$  => _neg(inc(^^#1)), sub(^^#2, ^#2)
+        }
+    ||  ^(\d+),\s*-(\d+)$   => {
+            _udivmod(^^#1, ^^#2)
+                ::  ^(\d+),\s*0$      => _neg(^#1), 0
+                ||  ^(\d+),\s*(\d+)$  => _neg(inc(^^#1)), sub(^#2, ^^#2)
+        }
+}
+
+def div {
+    (.*) => { _divmod(^^#1) :: ^(-?\d+), (-?\d+)$ => #1 }
+}
+
+def mod {
+    (.*) => { _divmod(^^#1) :: ^(-?\d+), (-?\d+)$ => #2 }
+}

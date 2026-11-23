@@ -1,0 +1,26 @@
+// a tour of the standard library in std/
+// run from the root of the repository: cargo run --release -- examples/std_demo.stx
+
+get_file(std/all.stx)
+
+// numbers are text, so they can be as large as you like
+print(mul(123456789, 987654321))                    // 121932631112635269
+print(sub(3, 10) div(-7, 2) mod(-7, 2))             // -7 -4 1
+
+// a factorial on top of mul and dec
+def factorial {
+        ^0$ => 1
+    ||  (.*) => mul(^#1, factorial(dec(^^^#1)))
+}
+print(factorial(15))                                // 1307674368000
+
+// text
+print(upper(rev(hello)))                            // OLLEH
+print(len(the quick brown fox))                     // 19
+print(index_of(the quick brown fox, brown))         // 10
+print({ eq(abc, abc) :: y => same || n => different })
+
+// lists
+print(count(split(the quick brown fox, )))          // 4
+print(join(split(2026-11-23, -), .))                // 2026.11.23
+print(nth(split(a b c d, ), 2))                     // c

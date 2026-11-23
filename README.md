@@ -42,9 +42,10 @@ However, functions are not just sugar for scopes, as they enable recursion.
 
 * **The Ghost Character `~`:** When writing recursive functions, one often runs into the following problem. Say we want to call register 3, and append the digit 1 to the end of its value. We cannot write `#31`, as this calls register 31. Or we want to build the string `10000` by saying `1zeroes(4)`, using a function "zeroes". However, this will try to call the function named "1zeroes". To fix this problem, one can use the "ghost character" `~`. It can be used to separate expressions (as in `#3~1` or `1~zeroes(4)`), but is removed afterwards. 
 * **Passing Context:** Note also that a function counts as a scope. To pass a capture group as input, one always needs to add at least one `^`.
-    * *Example:* `def swap { (.*)&(.*) => #2#1 } 
-        { world, hello :: (.*), (.*) => swap(^#1&^#2) }
+    * *Example:* `def swap { (.*), (.*) => #2#1 } 
+        { world, hello :: (.*), (.*) => swap(^#1, ^#2) }
         `
+* **Multiple Arguments:** A function always receives a single string. By convention, multiple arguments are separated by a comma and a space, as in `add(12, 30)`. The space also stops a call in the next argument from merging with the text before it: `add(1, dec(5))` works, while `add(1,dec(5))` calls a function named `1,dec`.
 ### Evaluation Protection
 
 When parsing the current state, anything inside square braces is ignored, but when a scope (or function) returns, then a single layer of square braces is stripped from its fully evaluated output string before the replacement is performed. This enables meta-programming.
@@ -72,6 +73,38 @@ When the interpreter fails, it reports a message of the form `error[<code>]: …
 
 ---
 
+## Standard Library
+
+The directory `std/` contains a standard library written in Subtext itself, with no special support from the interpreter. Load it with `get_file`:
+
+```subtext
+get_file(std/all.stx)
+
+print(mul(123456789, 987654321))         // 121932631112635269
+print(upper(rev(hello)))                 // OLLEH
+print(join(split(the quick fox, ), _))   // the_quick_fox
+```
+
+Paths are relative to the directory the interpreter runs in, so run your program from the root of this repository. Each file loads the files it depends on, so you can also load a single one, e.g. `get_file(std/math.stx)`. `get_file` needs a file system, so the standard library is not available in the web version.
+
+| File | Functions |
+|---|---|
+| `std/math.stx` | `add(a, b)`, `sub(a, b)`, `mul(a, b)`, `div(a, b)`, `mod(a, b)`, `inc(n)`, `dec(n)`, `cmp(a, b)` (gives `<`, `=` or `>`), `min(a, b)`, `max(a, b)` |
+| `std/string.stx` | `len(s)`, `rev(s)`, `upper(s)`, `lower(s)`, `repeat(s, n)`, `slice(s, from, to)`, `eq(a, b)` and `contains(s, part)` (give `y` or `n`), `index_of(s, part)` (gives `-1` if not found) |
+| `std/list.stx` | `split(s, sep)`, `join(list, sep)`, `count(list)`, `nth(list, i)` |
+| `std/error.stx` | `error(msg)` stops the program with an error showing `msg` |
+
+* **Numbers** are decimal integers with an optional minus sign. Since they are just text, there is no size limit. `div` and `mod` round towards negative infinity, so `mod(a, b)` has the sign of `b`.
+* **Lists** are written as `|a|b|c`, the format of the array example below. Items cannot contain `|`.
+* **Indices** (`slice`, `index_of`, `nth`) start at 0.
+* **Arguments** are trimmed like every function input, so they cannot begin or end with whitespace. An empty separator in `split` and `join` therefore stands for a single space. Text arguments are split at the last `, `, so only the first argument may contain `, `.
+* **Text is code:** a string passed to these functions is read back in by the interpreter, so it must not contain anything that evaluates (`{`, `[`, `#`, `~`, or a word directly followed by `(`).
+* Functions whose names start with `_` are internal helpers.
+
+The string and list functions loop without growing the recursion depth. Each step returns its next call wrapped in protection braces, e.g. `#1[~_upper(>]#2[)]`, so that call is evaluated by the caller instead of one level deeper. See the comments in `std/string.stx` for details.
+
+---
+
 ## Examples
 
 Here are some examples, ranging from simple to complex.
@@ -95,7 +128,7 @@ print(inc_bin(1011)) // 1100
 ```
 
 ### Compare
-Takes two positive integers, separated by `&`, and compares them. Returns `<`, `>`, or `=`.
+Takes two positive integers, separated by `, `, and compares them. Returns `<`, `>`, or `=`.
 
 ```subtext
 def compare_digits {
@@ -122,25 +155,25 @@ def compare_digits {
 }
 
 def compare {
-        (\d*)&(\d*)$                  => compare(^#1&^#2=) // init with = state
-    ||  (\d*)(\d)&(\d*)(\d)([<,>,=])    => { 
-            compare_digits(^^#2^^#4)  :: (.) => compare(^^#1&^^#3{^^#1 :: ([<,>]) => #1 || = => ^^^#5 })
+        ^(\d*), (\d*)$                      => compare(^#1, ^#2, =) // init with = state
+    ||  ^(\d*)(\d), (\d*)(\d), ([<>=])$    => { 
+            compare_digits(^^#2^^#4)  :: (.) => compare(^^#1, ^^#3, {^^#1 :: ([<>]) => #1 || = => ^^^#5 })
         }
-    ||  &\d                             => <  // left number is empty, right is bigger 
-    ||  \d&                             => >  // right number is empty, left is bigger
-    ||  &([<,>,=])                      => #1 // numbers have the same length, return the current state
+    ||  ^, \d                             => <  // left number is empty, right is bigger 
+    ||  ^\d+, ,                           => >  // right number is empty, left is bigger
+    ||  ^, , ([<>=])$                     => #1 // numbers have the same length, return the current state
 }
 
-print(compare(1234&1235)) // <
-print(compare(1234&1234)) // =
-print(compare(1235&1234)) // >
-print(compare(999&1000))  // <
+print(compare(1234, 1235)) // <
+print(compare(1234, 1234)) // =
+print(compare(1235, 1234)) // >
+print(compare(999, 1000))  // <
 ```
 
 ### Turing Machine
 
 ```subtext
-// the state is encoded as <state> <read> => <new_state> <write> <move>
+// the state is encoded as <state>, <read> => <new_state> <write> <move>
 // the states and alphabet can be any non whitespace characters or sequences thereof
 // the output HALT of the state table below is reserved for halting
 // non-initialized parts of the tape are assumed to be all B (blank)
@@ -150,43 +183,43 @@ print(compare(999&1000))  // <
 
 def state_table {
     START => q_start
-        || q_start 0 => q_f0 B R
-        || q_start 1 => q_f1 B R
-        || q_start B => HALT
-        || q_f0 0 => q_f0 0 R
-        || q_f0 1 => q_f0 1 R
-        || q_f0 B => q_c0 B L
-        || q_f1 0 => q_f1 0 R
-        || q_f1 1 => q_f1 1 R
-        || q_f1 B => q_c1 B L
-        || q_c0 0 => q_back B L
-        || q_c0 1 => HALT
-        || q_c0 B => HALT
-        || q_c1 1 => q_back B L
-        || q_c1 0 => HALT
-        || q_c1 B => HALT
-        || q_back 0 => q_back 0 L
-        || q_back 1 => q_back 1 L
-        || q_back B => q_start B R
+        || q_start, 0 => q_f0 B R
+        || q_start, 1 => q_f1 B R
+        || q_start, B => HALT
+        || q_f0, 0 => q_f0 0 R
+        || q_f0, 1 => q_f0 1 R
+        || q_f0, B => q_c0 B L
+        || q_f1, 0 => q_f1 0 R
+        || q_f1, 1 => q_f1 1 R
+        || q_f1, B => q_c1 B L
+        || q_c0, 0 => q_back B L
+        || q_c0, 1 => HALT
+        || q_c0, B => HALT
+        || q_c1, 1 => q_back B L
+        || q_c1, 0 => HALT
+        || q_c1, B => HALT
+        || q_back, 0 => q_back 0 L
+        || q_back, 1 => q_back 1 L
+        || q_back, B => q_start B R
 }
 
 def turing {
     // extract the state, prefix A, symbols around the head a,b and suffix B
-    //  state  A   a  >b  B
-    (.+) (.*)(.)>(.)(.*) => { 
-        state_table(^^#1 ^^#4) :: HALT => ^#2^#3^#4^#5
+    //  state, A   a  >b  B
+    (.+), (.*)(.)>(.)(.*) => { 
+        state_table(^^#1, ^^#4) :: HALT => ^#2^#3^#4^#5
             ||  (.+) (.) (.) => turing({
 //      new_state^   w   ^move
 
                     // match against the direction to move and whether A or B are empty
                     // if empty, we have to insert a B so that the reading head is never exposed on either side
-                    ^^#3&^^^#2&^^^#5 :: L&.+&.* => ^^#1 ^^^#2>^^^#3^^#2^^^#5
-                    || L&.*&   => ^^#1 B>^^^#2^^^#3^^#2^^^#5
-                    || R&.*&.+ => ^^#1 ^^^#2^^^#3^^#2>^^^#5
-                    || R&.*&   => ^^#1 ^^^#2^^^#3^^#2>B
+                    ^^#3, ^^^#2, ^^^#5 :: ^L, [^,]+, => ^^#1, ^^^#2>^^^#3^^#2^^^#5
+                    || ^L, ,         => ^^#1, B>^^^#2^^^#3^^#2^^^#5
+                    || ^R, [^,]*, .  => ^^#1, ^^^#2^^^#3^^#2>^^^#5
+                    || ^R, [^,]*,$   => ^^#1, ^^^#2^^^#3^^#2>B
                     }) 
     }
-    || (.*) => turing(state_table(START) B>^#1) // initialize the call
+    || (.*) => turing(state_table(START), B>^#1) // initialize the call
 }
 
 print(turing(1011001))
@@ -240,7 +273,7 @@ def sum_two_digits {
 }
 
 // adds two positive integers
-// Matches against Aa+Bb&cP
+// Matches against Aa, Bb, cP
 // a and b are single digits,
 // c is a carry (might not be there)
 // P is the partial result (might not be there)
@@ -248,20 +281,23 @@ def sum_two_digits {
 // the other arms handle the cases where one side is empty
 
 def add {
+        // Initialize the call with an empty partial result
+        ^(\d+), (\d+)$                     => add(^#1, ^#2, )
+
         // Core addition for digits on both sides
-        (\d*)(\d)\+(\d*)(\d)&?(c?)(\d*) => add(^#1+^#3&{ sum_two_digits(^^^#2^^^#4^^^#5) :: (\d)(c?) => #2#1^^#6 })
+    ||  ^(\d*)(\d), (\d*)(\d), ?(c?)(\d*)$ => add(^#1, ^#3, { sum_two_digits(^^^#2^^^#4^^^#5) :: (\d)(c?) => #2#1^^#6 })
     
-        // Carry: digits remaining on the LEFT (e.g., 1+&c1)
-    ||  (\d+)\+&c(\d*)                  => add(^#1+1&^#2)
+        // Carry: digits remaining on the LEFT (e.g., 1, , c1)
+    ||  ^(\d+), , c(\d*)$                => add(^#1, 1, ^#2)
     
-        // Carry: digits remaining on the RIGHT or neither (e.g., +1&c1 or +&c1)
-    ||  \+(\d*)&c(\d*)                  => add(^#1+1&^#2)
+        // Carry: digits remaining on the RIGHT or neither (e.g., , 1, c1 or , , c1)
+    ||  ^, (\d*), c(\d*)$                => add(^#1, 1, ^#2)
     
-        // Cleanup: digits remaining on the LEFT, no carry (e.g., 1+&3)
-    ||  (\d+)\+&?(\d*)                  => #1#2
+        // Cleanup: digits remaining on the LEFT, no carry (e.g., 1, , 3)
+    ||  ^(\d+), , ?(\d*)$                => #1#2
     
-        // Cleanup: digits remaining on the RIGHT or neither (e.g., +1&3)
-    ||  \+(\d*)&?(\d*)                  => #1#2
+        // Cleanup: digits remaining on the RIGHT or neither (e.g., , 1, 3)
+    ||  ^, (\d*), ?(\d*)$                => #1#2
     
         // Fallback
     ||  (\d*)                           => #1
@@ -269,25 +305,25 @@ def add {
 
 // takes positive integers and checks if they are equal by comparing their digits from the right to the left
 def are_equal {
-    (.*)(.)&(.*)(.)  => { ^#2^#4 :: 00|11|22|33|44|55|66|77|88|99 => are_equal(^^#1&^^#3) || => n }
-    ||  .+&             => n
-    ||  &.+             => n 
-    || &                => y
+        (\d*)(\d), (\d*)(\d)  => { ^#2^#4 :: 00|11|22|33|44|55|66|77|88|99 => are_equal(^^#1, ^^#3) || => n }
+    ||  ^\d+,$              => n
+    ||  ^, \d+$             => n
+    ||  ^,$                 => y
 }
 
 // takes an integer and computes the corresponding fibonacci number
 // the last match arm is used as an initializer (matching the passed digit)
-// after that, we call with A B n N, where 
+// after that, we call with A, B, n, N, where 
 // A and B are (Fib(n), Fib(n-1))
 // N is how many iterations should be performed in total
 
 def fibonacci {
-    (\d+) (\d+) (\d+) (\d+) => 
+    (\d+), (\d+), (\d+), (\d+) => 
     {
-        are_equal(^^#3&^^#4)    ::  y     => ^#1 
-                                ||  n     => fibonacci(add(^^^#1+^^^#2) ^^#1 add(^^^#3+1) ^^#4)
+        are_equal(^^#3, ^^#4)    ::  y     => ^#1 
+                                ||  n     => fibonacci(add(^^^#1, ^^^#2), ^^#1, add(^^^#3, 1), ^^#4)
     }
-   || (\d+)                   => fibonacci(1 1 1 ^#1)
+   || (\d+)                   => fibonacci(1, 1, 1, ^#1)
 }
 
 print(fibonacci(100))

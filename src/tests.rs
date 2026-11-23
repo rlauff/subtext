@@ -228,3 +228,181 @@ fn test_missing_parent_scope_suggests_level() {
         other => panic!("Expected MissingParentScope, got {:?}", other),
     }
 }
+
+// ==========================================
+// Tests for the standard library in std/
+// ==========================================
+
+/// Loads the whole standard library and evaluates `expr` after it.
+/// Runs on a thread with a large stack, like the recursion-limit test above.
+fn std_eval(expr: &str) -> String {
+    let program = format!("get_file(std/all.stx)\n{}", expr);
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || run(&program).expect("std evaluation failed"))
+        .unwrap()
+        .join()
+        .unwrap()
+        .trim()
+        .to_string()
+}
+
+/// Asserts that each call evaluates to the expected text.
+fn assert_std(cases: &[(&str, &str)]) {
+    for (call, expected) in cases {
+        // the result is wrapped in < > so that empty results are visible
+        assert_eq!(
+            std_eval(&format!("<~{}>", call)),
+            format!("<{}>", expected),
+            "{}",
+            call
+        );
+    }
+}
+
+#[test]
+fn test_std_add_sub() {
+    assert_std(&[
+        ("add(19, 3)", "22"),
+        ("add(999, 1)", "1000"),
+        ("add(0, 0)", "0"),
+        ("add(007, 3)", "10"),
+        ("add(-5, 3)", "-2"),
+        ("add(5, -8)", "-3"),
+        ("add(-2, -3)", "-5"),
+        ("add(1,2)", "3"),
+        ("sub(10, 3)", "7"),
+        ("sub(3, 10)", "-7"),
+        ("sub(1000, 1)", "999"),
+        ("sub(100, 100)", "0"),
+        ("sub(-3, -10)", "7"),
+        ("sub(-3, 4)", "-7"),
+        ("sub(3, -4)", "7"),
+    ]);
+}
+
+#[test]
+fn test_std_inc_dec_cmp() {
+    assert_std(&[
+        ("inc(129)", "130"),
+        ("inc(99)", "100"),
+        ("inc(-1)", "0"),
+        ("inc(-10)", "-9"),
+        ("dec(130)", "129"),
+        ("dec(10)", "9"),
+        ("dec(1)", "0"),
+        ("dec(0)", "-1"),
+        ("dec(-9)", "-10"),
+        ("cmp(3, 5)", "<"),
+        ("cmp(5, 3)", ">"),
+        ("cmp(12, 12)", "="),
+        ("cmp(-5, 3)", "<"),
+        ("cmp(-2, -10)", ">"),
+        ("min(4, -2)", "-2"),
+        ("max(4, -2)", "4"),
+    ]);
+}
+
+#[test]
+fn test_std_mul_div_mod() {
+    assert_std(&[
+        ("mul(123456789, 987654321)", "121932631112635269"),
+        ("mul(-3, 4)", "-12"),
+        ("mul(-3, -4)", "12"),
+        ("mul(0, -5)", "0"),
+        ("div(1234567, 89)", "13871"),
+        ("mod(1234567, 89)", "48"),
+        ("div(3, 10)", "0"),
+        // floored division: the remainder has the sign of the divisor
+        ("div(7, 2)", "3"),
+        ("mod(7, 2)", "1"),
+        ("div(-7, 2)", "-4"),
+        ("mod(-7, 2)", "1"),
+        ("div(7, -2)", "-4"),
+        ("mod(7, -2)", "-1"),
+        ("div(-7, -2)", "3"),
+        ("mod(-7, -2)", "-1"),
+        ("mod(-100, 5)", "0"),
+    ]);
+}
+
+#[test]
+fn test_std_div_by_zero_is_an_error() {
+    let err = run("get_file(std/all.stx)\ndiv(1, 0)").unwrap_err();
+    match err.kind {
+        ErrorKind::NoMatchingArm { input, .. } => assert_eq!(input, "division by zero"),
+        other => panic!("Expected NoMatchingArm, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_std_strings() {
+    assert_std(&[
+        ("len(hello world)", "11"),
+        ("len()", "0"),
+        ("len(abcdefghij)", "10"),
+        ("len(a  b)", "4"),
+        ("rev(hello  world)", "dlrow  olleh"),
+        ("rev()", ""),
+        ("upper(Hello, World 42!)", "HELLO, WORLD 42!"),
+        ("lower(Hello, World 42!)", "hello, world 42!"),
+        ("repeat(ab, 3)", "ababab"),
+        ("repeat(a b, 2)", "a ba b"),
+        ("repeat(x, 0)", ""),
+        ("slice(hello world, 0, 5)", "hello"),
+        ("slice(hello world, 6, 100)", "world"),
+        ("slice(hello, 3, 1)", ""),
+        ("slice(hello, 9, 12)", ""),
+    ]);
+}
+
+#[test]
+fn test_std_search() {
+    assert_std(&[
+        ("eq(abc, abc)", "y"),
+        ("eq(abc, abd)", "n"),
+        ("eq(a.c, abc)", "n"),
+        ("eq(1+1, 1+1)", "y"),
+        ("eq(a b, a b)", "y"),
+        ("eq(a, )", "n"),
+        ("contains(hello world, o w)", "y"),
+        ("contains(hello, z)", "n"),
+        ("contains(ab, .)", "n"),
+        ("contains(a.b, .)", "y"),
+        ("index_of(hello world, o)", "4"),
+        ("index_of(hello world, world)", "6"),
+        ("index_of(hello, z)", "-1"),
+        ("index_of(a, b, c, c)", "6"),
+    ]);
+}
+
+#[test]
+fn test_std_lists() {
+    assert_std(&[
+        ("split(a-b-c, -)", "|a|b|c"),
+        ("split(hello big world, )", "|hello|big|world"),
+        ("split(a.b, .)", "|a|b"),
+        ("split(a--b--, --)", "|a|b|"),
+        ("join(|a|b|c, +)", "a+b+c"),
+        ("join(|hello|world, )", "hello world"),
+        ("join(, -)", ""),
+        ("count(|a|b|c)", "3"),
+        ("count()", "0"),
+        ("count(|a||c)", "3"),
+        ("nth(|a|b|c, 0)", "a"),
+        ("nth(|a|b|c, 2)", "c"),
+        (
+            "join(split(the quick brown fox, ), _)",
+            "the_quick_brown_fox",
+        ),
+    ]);
+}
+
+#[test]
+fn test_std_long_inputs_do_not_hit_the_recursion_limit() {
+    // the string and list loops hand their next step back to the caller,
+    // so they stay at constant depth even for inputs far longer than the limit
+    let text = "ab cd".repeat(400);
+    assert_eq!(std_eval(&format!("len({})", text)), "2000");
+    assert_eq!(std_eval(&format!("count(split({}, ))", text)), "401");
+}

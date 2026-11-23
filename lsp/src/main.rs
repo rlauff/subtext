@@ -9,25 +9,18 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 mod scanner;
 use scanner::scan;
 
-/// Defines the supported token types for the editor.
-/// The indices of this array MUST EXACTLY match what `TokenType::as_lsp_index()` returns
-/// in your scanner module.
-fn get_supported_token_types() -> Vec<SemanticTokenType> {
-    vec![
-        SemanticTokenType::KEYWORD,   // Index 0: Def
-        SemanticTokenType::FUNCTION,  // Index 1: NameAfterDef
-        SemanticTokenType::OPERATOR,  // Index 2: Brace
-        SemanticTokenType::OPERATOR,  // Index 3: InputPatternSeparator
-        SemanticTokenType::OPERATOR,  // Index 4: PatternOutputSeparator
-        SemanticTokenType::OPERATOR,  // Index 5: NewArmSeparator
-        SemanticTokenType::FUNCTION,  // Index 6: FunctionCall
-        SemanticTokenType::STRING,    // Index 7: RegisterCall
-        SemanticTokenType::COMMENT,   // Index 8: Comment
-        SemanticTokenType::KEYWORD,   // Index 9: GhostChar
-        SemanticTokenType::PARAMETER, // Index 10: Input
-        SemanticTokenType::REGEXP,    // Index 11: Pattern
-        SemanticTokenType::STRING,    // Index 12: Output
-    ]
+/// The token types and modifiers, in the order the scanner refers to them by index.
+fn legend() -> SemanticTokensLegend {
+    SemanticTokensLegend {
+        token_types: scanner::TOKEN_TYPES
+            .iter()
+            .map(|&name| SemanticTokenType::new(name))
+            .collect(),
+        token_modifiers: scanner::TOKEN_MODIFIERS
+            .iter()
+            .map(|&name| SemanticTokenModifier::new(name))
+            .collect(),
+    }
 }
 
 /// The main state of the Language Server.
@@ -55,10 +48,7 @@ impl LanguageServer for Backend {
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
                             work_done_progress_options: WorkDoneProgressOptions::default(),
-                            legend: SemanticTokensLegend {
-                                token_types: get_supported_token_types(),
-                                token_modifiers: vec![], // No modifiers needed for now
-                            },
+                            legend: legend(),
                             range: Some(false), // We scan the whole document, not just ranges
                             full: Some(SemanticTokensFullOptions::Bool(true)),
                         },
