@@ -7,7 +7,7 @@ To run locally, clone this repository and run with
 
 `cargo run --release -- <path to .stx file>`
 
-The submodule lsp contains an lsp server providing semantic tokens. At the moment, users have to point their prefered editor by hand to the binary at
+The submodule lsp contains an lsp server. At the moment, users have to point their preferred editor by hand to the binary at
 `subtext/lsp/target/release/lsp`
 
 ---
@@ -62,7 +62,7 @@ Any part of the program surrounded by `//` and a newline is a comment and ignore
 For IO and debugging, we provide the following built-in functions:
 
 * **`get_file(path)`:** Takes a path, reads the file, and replaces itself by the content of the file.
-* **`get_input(prompt)`:** Takes a prompt, prints it to stdout and expects user input via stdin. Then it replaces itself by that input.
+* **`get_input(prompt)`:** Takes a prompt, prints it and expects user input. Then it replaces itself by that input.
 * **`print(content)`:** Evaluates its argument, prints the result, and then replaces itself by the empty string.
 * **`print_raw(content)`:** Prints its content as is, without evaluating it first.
 * **`debug(expr)`:** Evaluates `expr` exactly like `print` would, but streams every rewrite step while doing so: each step shows what was rewritten (`⟨old⟩ ⇒ ⟨new⟩`) together with a window of the surrounding state and where the rewrite happened (input/output of which scope or call). The call then replaces itself by the empty string; the evaluated result is printed in the trailer but *not* substituted back. For unevaluated verbatim output use `print_raw`. Traces are capped at 1000 steps.
